@@ -1,63 +1,201 @@
-# DebugTracing Logging Library (Portable, Thread-Safe)
+# DebugTracing Library
 
-This library provides:
-- `DebugTracesLib.h`: public logging macros (`TX_LOG_INFO`, `TX_LOG_WARN`, `TX_LOG_ERROR`, `TX_LOG_DEBUG`) and portable helpers.
-- `Logger.[h/cpp]`: a thread-safe singleton (lazy; no manual start/stop required) logger that emits to the platform debugger and optionally to a file.
-- `Writer.[h/cpp]`: a background file writer that trims the log file by line count.
+A portable, thread-safe C++20 logging library with compile-time optimization and runtime configuration.
 
-## Highlights
-- **Portable sinks**: OutputDebugStringA on Windows; syslog + stderr on macOS/Linux.
-- **Thread-safe**: internal mutexes and atomics; background writer with condition_variable.
-- **No dangling refs**: thread-safe singleton (lazy; no manual start/stop required) avoids manual ref-counting.
-- **Line-capped file**: when `maxLines > 0`, the writer keeps the last 70% of lines when trimming.
+## Project Structure
 
-## Basic global usage
+```
+src/
+├── DebugTracesLib.h    # Main header with logging macros and portable helpers
+├── Logger.h/cpp        # Thread-safe singleton logger with multiple output sinks
+└── Writer.h/cpp        # Background file writer with automatic log rotation
 
+tests/
+└── dbgtracing_gtest.cpp # Google Test suite
+
+cmake/
+└── DebugTracingConfig.cmake.in # CMake package configuration
+```
+
+## Features
+
+- **Multiple Log Levels**: FATAL, ERROR, WARN, INFO, DEBUG, TRACE
+- **Compile-time Optimization**: Log statements can be compiled out based on level
+- **Multiple Output Sinks**: 
+  - Platform debugger (OutputDebugString on Windows, syslog on Unix)
+  - Console/stderr output
+  - File output with automatic rotation
+- **Thread-Safe**: Uses mutexes and condition variables for safe multi-threaded logging  
+- **Per-File Controls**: Enable tracing and time measurement on a per-compilation-unit basis
+- **Automatic Log Rotation**: Keeps last 70% of lines when file size limit is reached
+- **Portable**: Works on Windows (MSVC), macOS, and Linux (GCC/Clang)
+
+## Basic Usage
+
+### Simple Logging
 ```cpp
-#include "TX_DebugTracesLib.h"
-#include "TX_Logger.h"
+#include "DebugTracesLib.h"
+#include "Logger.h"
 
 int main() {
-  TX_Logger::getPtr()->setLogLevel(LogLevel::LL_DEBUG);
-  TX_Logger::getPtr()->logIntoFile("app.log", /*maxLines=*/10000);
-
-  TX_LOG_INFO("Hello %s", "world");
-  TX_LOG_WARN("Value=%d", 42);
-  TX_LOG_ERROR("Something failed: code=%d", -1);
+    // Get logger instance and configure
+    auto* logger = TX_Logger::getPtr();
+    logger->setLogLevel(LogLevel::LL_DEBUG);
+    logger->logIntoFile("app.log", /*maxLines=*/10000);
+    
+    // Use convenient macros
+    TX_LOG_INFO("Application started");
+    TX_LOG_WARN("Warning: value=%d", 42);
+    TX_LOG_ERROR("Error occurred: %s", "file not found");
+    TX_LOG_DEBUG("Debug info: %p", &logger);
+    
+    return 0;
 }
 ```
 
-## Per-file controls
+### Alternative Macro Style
+```cpp
+#include "Logger.h"
 
-At the very top of a `.cpp` file you can enable tracing banners and override log level:
+void someFunction() {
+    LogInfo("Information message");
+    LogWarn("Warning message"); 
+    LogError("Error message");
+    LogDebug("Debug message");  // Only in debug builds
+}
+```
+
+### Stream-Style Logging
+```cpp
+#include "Logger.h"
+
+void streamExample() {
+    TraceInfo() << "Stream info: " << 123;
+    TraceWarning() << "Stream warning: " << "test";  
+    TraceError() << "Stream error: " << 456;
+}
+```
+
+## Advanced Features
+
+### Per-File Controls
+
+Define these macros **before** including the header to control per-compilation-unit behavior:
 
 ```cpp
-// Optional: banner at compile time
+// Enable tracing for this file (shows compile-time banner)
 #define TX_TRACE_THIS_FILE 1
 
-// Optional: raise/lower verbosity only for this file
-#define TX_LOG_LEVEL_FILE TX_LogLevel::Debug
+// Enable time measurement helpers (debug builds only)  
+#define TX_MEASURE_TIME 1
 
-#include "TX_DebugTracesLib.h"
-#include "TX_Logger.h"
+// Override log level for this specific file
+#define TX_LOG_LEVEL_FILE TX_LVL_DEBUG
 
-void foo() {
-  TX_LOG_DEBUG("This will appear only if this file's log level includes Debug");
+#include "DebugTracesLib.h"
+
+void myFunction() {
+    TRACE("This will log when TX_TRACE_THIS_FILE is enabled");
+    TX_LOG_DEBUG("File-specific debug message");
 }
 ```
 
-On MSVC this will emit a `#pragma message` banner; on GCC/Clang it will emit a `#warning` if `TX_TRACE_THIS_FILE` is set.
+### Time Measurement
+
+```cpp
+#define TX_MEASURE_TIME 1
+#include "DebugTracesLib.h"
+
+void timedOperation() {
+    TX_START_TIME_MEASUREMENT();
+    
+    // Your code here
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    
+    TX_PRINT_TIME_MEASUREMENT(); // Logs elapsed time in microseconds
+}
+
+void namedTimingContext() {
+    TX_START_TIME_MEAS_CTX(database_query);
+    
+    // Database operation
+    
+    TX_PRINT_TIME_MEAS_CTX(database_query); // Logs "Time Elapsed (database_query): X us"
+}
+```
+
+### Compile-Time Log Level Control
+
+```cpp
+// Global log level (affects all files)
+#define TX_LOG_LEVEL_GLOBAL TX_LVL_WARN  // Only WARN and ERROR will be compiled
+
+// File-specific override
+#define TX_LOG_LEVEL_FILE TX_LVL_DEBUG   // This file gets DEBUG and above
+
+#include "DebugTracesLib.h"
+```
+
+Available levels: `TX_LVL_DEBUG`, `TX_LVL_INFO`, `TX_LVL_WARN`, `TX_LVL_ERROR`
 
 ## CMake Integration
 
-### Option A: As a subdirectory (simplest for local sources)
+### Option A: As a Subdirectory (Recommended)
 ```cmake
-add_subdirectory(path/to/DebugTraces DebugTraces-build)
+# Add to your CMakeLists.txt
+add_subdirectory(path/to/DebugTraces)
 target_link_libraries(YourTarget PRIVATE DBGTX::dbgtracing)
 ```
 
-### Option B: Installed + find_package()
+### Option B: Find Installed Package
 ```cmake
+# First install the library
 find_package(DebugTracing REQUIRED)
 target_link_libraries(YourTarget PRIVATE DBGTX::dbgtracing)
 ```
+
+### Build Options
+```cmake
+# Enable tests (requires Google Test)
+set(DBGTR_BUILD_TESTS ON)
+
+# Disable installation
+set(DBGTR_INSTALL OFF)
+
+# Enable extra warnings
+set(DBGTR_WARNINGS ON)
+
+# Treat warnings as errors  
+set(DBGTR_WERROR ON)
+```
+
+## Building
+
+### Quick Start
+```bash
+# Configure
+cmake -B build -S .
+
+# Build
+cmake --build build
+
+# Run tests (if enabled)
+cmake --build build --target test
+```
+
+### With Tests
+```bash
+# Configure with tests enabled
+cmake -B build -S . -DDBGTR_BUILD_TESTS=ON
+
+# Build and run tests
+cmake --build build
+cd build && ctest
+```
+
+## Requirements
+
+- **C++20** compatible compiler
+- **CMake 3.20** or higher  
+- **Google Test** (optional, for tests only)
+- **Ninja** or **Make** build system
