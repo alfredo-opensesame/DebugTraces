@@ -1,0 +1,8 @@
+// ---- Example: add to your SyncRecording CMake project ----
+// Option A: as a subdirectory (simplest for local sources)
+add_subdirectory(path/to/txlogging-cmake txlogging-build)
+target_link_libraries(SyncRecording PRIVATE TX::logging)
+
+// Option B: installed + find_package()
+find_package(TXLogging REQUIRED)
+target_link_libraries(SyncRecording PRIVATE TX::logging)

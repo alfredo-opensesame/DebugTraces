@@ -1,0 +1,9 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# Import the targets
+include("${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake")
+
+# Expose an alias ${TARGET_ALIAS}-> ${TARGET_NAME}
+# (The alias is already created in build; after install, the export provides TX::txlogging target name mapping)
