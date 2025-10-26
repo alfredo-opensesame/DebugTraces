@@ -81,9 +81,9 @@ size_t Writer::correctFileSize(std::fstream & stream)
     stream.seekg(0);
     stream.flush();
 
-    size_t linesToDelete = m_maxNumLines * cleanFilePer / 100;
+    size_t linesToKeep = m_maxNumLines * cleanFilePer / 100;
     while (std::getline(stream, str))
-        if (counter++ > linesToDelete)
+        if (counter++ >= (m_maxNumLines - linesToKeep))
             fileLines.push_back(std::move(str));
 
     stream.close();

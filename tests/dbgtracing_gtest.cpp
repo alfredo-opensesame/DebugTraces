@@ -5,6 +5,8 @@
 
 #include <fstream>
 #include <string>
+#include <chrono>
+#include <thread>
 
 TEST(TXLogging, FileSinkWritesAndTrims) {
   const std::string path = "txlogging_test.log";

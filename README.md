@@ -186,11 +186,12 @@ cmake --build build --target test
 ### With Tests
 ```bash
 # Configure with tests enabled
-cmake -B build -S . -DDBGTR_BUILD_TESTS=ON
+mkdir -p build && cd build
+cmake .. -DDBGTR_BUILD_TESTS=ON
 
 # Build and run tests
-cmake --build build
-cd build && ctest
+make
+ctest
 ```
 
 ## Requirements
