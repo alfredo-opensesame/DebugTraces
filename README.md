@@ -47,3 +47,17 @@ void foo() {
 ```
 
 On MSVC this will emit a `#pragma message` banner; on GCC/Clang it will emit a `#warning` if `TX_TRACE_THIS_FILE` is set.
+
+## CMake Integration
+
+### Option A: As a subdirectory (simplest for local sources)
+```cmake
+add_subdirectory(path/to/DebugTraces DebugTraces-build)
+target_link_libraries(YourTarget PRIVATE DBGTX::dbgtracing)
+```
+
+### Option B: Installed + find_package()
+```cmake
+find_package(DebugTracing REQUIRED)
+target_link_libraries(YourTarget PRIVATE DBGTX::dbgtracing)
+```
