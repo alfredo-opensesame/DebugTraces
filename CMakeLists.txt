@@ -7,7 +7,7 @@ set(DBGTR_TARGET_NAMESPACE DBGTX::)
 set(DBGTR_TARGET_ALIAS     "${DBGTR_TARGET_NAMESPACE}${DBGTR_TARGET_NAME}")
 
 # Options
-option(DBGTR_BUILD_TESTS "Build Debug Tracing tests"     OFF)
+option(DBGTR_BUILD_TESTS "Build Debug Tracing tests"     ON)
 option(DBGTR_INSTALL     "Install Debug Tracing targets" ON)
 option(DBGTR_WARNINGS    "Enable extra warnings"         ON)
 option(DBGTR_WERROR      "Treat warnings as errors"      OFF)
@@ -117,24 +117,58 @@ if (DBGTR_BUILD_TESTS)
   endif()
 
   if (GTest_FOUND)
-    add_executable(${DBGTR_TARGET_NAME}_tests "tests/${DBGTR_TARGET_NAME}_gtest.cpp")
-    target_compile_features(${DBGTR_TARGET_NAME}_tests PRIVATE cxx_std_20)
+    # Automatically discover all test files in tests directory
+    file(GLOB DBGTR_TEST_SOURCES "tests/*.cpp")
+    
+    # Comprehensive DebugTraces test suite - single target with all test files
+    add_executable(${DBGTR_TARGET_NAME}_tests ${DBGTR_TEST_SOURCES})
+    
+    target_compile_features(${DBGTR_TARGET_NAME}_tests PRIVATE cxx_std_17)
     target_link_libraries(${DBGTR_TARGET_NAME}_tests PRIVATE
       ${DBGTR_TARGET_ALIAS}
       GTest::gtest
       GTest::gtest_main
-      GTest::gmock
     )
+    
+    # Enable GTEST macro for resetWriter function
+    target_compile_definitions(${DBGTR_TARGET_NAME}_tests PRIVATE GTEST=1)
+    
+    # Thread support is essential for our thread safety tests
     find_package(Threads REQUIRED)
     target_link_libraries(${DBGTR_TARGET_NAME}_tests PRIVATE Threads::Threads)
-
+    
+    # Platform-specific libraries
+    if(UNIX AND NOT APPLE)
+      # Linux may need rt for clock_gettime in timing macros
+      target_link_libraries(${DBGTR_TARGET_NAME}_tests PRIVATE rt)
+    endif()
+    
+    # Compiler-specific flags for robust testing
+    if(MSVC)
+      target_compile_options(${DBGTR_TARGET_NAME}_tests PRIVATE /W4)
+      target_compile_definitions(${DBGTR_TARGET_NAME}_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+    else()
+      target_compile_options(${DBGTR_TARGET_NAME}_tests PRIVATE -Wall -Wextra -pthread)
+    endif()
+    
+    # Register tests with CTest
     include(GoogleTest OPTIONAL RESULT_VARIABLE HAVE_GTEST_MODULE)
     if (HAVE_GTEST_MODULE)
-      gtest_discover_tests(${DBGTR_TARGET_NAME}_tests)
+      gtest_discover_tests(${DBGTR_TARGET_NAME}_tests
+        PROPERTIES
+          TIMEOUT 60
+          LABELS "DebugTraces;UnitTests;Comprehensive"
+      )
     else()
       add_test(NAME ${DBGTR_TARGET_NAME}_tests COMMAND ${DBGTR_TARGET_NAME}_tests)
+      set_tests_properties(${DBGTR_TARGET_NAME}_tests PROPERTIES
+        TIMEOUT 60
+        LABELS "DebugTraces;UnitTests;Comprehensive"
+      )
     endif()
+    
+    message(STATUS "DebugTraces comprehensive test suite enabled with all tests in single target")
   else()
-    message(STATUS "GTest not found; ${DBGTR_TARGET_NAME}_tests will not be built")
+    message(STATUS "GTest not found; ${DBGTR_TARGET_NAME} tests will not be built")
   endif()
 endif()

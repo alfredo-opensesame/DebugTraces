@@ -60,7 +60,8 @@ public:
     static TX_Logger* getPtr() noexcept { return &instance(); }
     static void startInstance() noexcept { (void)instance(); }
     static void releaseInstance() noexcept { /* no-op; immortal singleton */ }
-void setLogLevel(const LogLevel & level);
+
+    void setLogLevel(const LogLevel & level);
 
     void writeInfo(const std::string & message);
     void writeWarning(const std::string & message);

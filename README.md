@@ -6,12 +6,16 @@ A portable, thread-safe C++20 logging library with compile-time optimization and
 
 ```
 src/
-├── DebugTracesLib.h    # Main header with logging macros and portable helpers
-├── Logger.h/cpp        # Thread-safe singleton logger with multiple output sinks
-└── Writer.h/cpp        # Background file writer with automatic log rotation
+├── DebugTracesLib.h    # Minimal API header with 7 macros and per-file controls
+└── Logger.cpp          # Thread-safe implementation with fixed buffers
 
 tests/
-└── dbgtracing_gtest.cpp # Google Test suite
+├── dbgtracing_gtest.cpp      # Core functionality tests
+├── test_disabled.cpp         # Disabled logging tests
+├── test_enabled.cpp          # Enabled logging tests
+├── test_thread_format.cpp    # Thread formatting tests
+├── test_thread_id_format.cpp # Thread ID format tests
+└── test_trace_macros.cpp     # Comprehensive macro tests
 
 cmake/
 └── DebugTracingConfig.cmake.in # CMake package configuration
@@ -19,124 +23,199 @@ cmake/
 
 ## Features
 
-- **Multiple Log Levels**: FATAL, ERROR, WARN, INFO, DEBUG, TRACE
-- **Compile-time Optimization**: Log statements can be compiled out based on level
-- **Multiple Output Sinks**: 
-  - Platform debugger (OutputDebugString on Windows, syslog on Unix)
-  - Console/stderr output
-  - File output with automatic rotation
-- **Thread-Safe**: Uses mutexes and condition variables for safe multi-threaded logging  
-- **Per-File Controls**: Enable tracing and time measurement on a per-compilation-unit basis
-- **Automatic Log Rotation**: Keeps last 70% of lines when file size limit is reached
-- **Portable**: Works on Windows (MSVC), macOS, and Linux (GCC/Clang)
+- **Minimal API**: Only 7 macros (`LOGF`, `LOGE`, `LOGW`, `LOGI`, `TRACE`, `LOGTIMER`, `LOG_FILE`)
+- **Per-File Override**: `TX_TRACE_THIS_FILE` controls logging per compilation unit
+- **Compile-Time Stripping**: Disabled logging compiles to no-ops (zero overhead)
+- **Thread-Safe**: Mutex-protected logging with no heap allocations in hot paths
+- **Dual Output**: Console (stderr) and optional file output with configurable paths
+- **RAII Timing**: `LOGTIMER(name)` automatically logs scope duration
+- **Cross-Platform**: Works on macOS, iOS, Linux, Windows
+- **C/C++ Compatible**: Works in both C and C++ projects
+
+## Main Macros Reference
+
+### **Available Macros (Minimal API)**
+| Macro | Level | Description |
+|-------|-------|-------------|
+| `LOGF(fmt, ...)` | FATAL | Critical errors that cause termination |
+| `LOGE(fmt, ...)` | ERROR | Runtime errors that affect functionality |
+| `LOGW(fmt, ...)` | WARN | Potential issues or degraded performance |
+| `LOGI(fmt, ...)` | INFO | General informational messages |
+| `TRACE(fmt, ...)` | DEBUG | Basic debug tracing (controlled by TX_TRACE_THIS_FILE) |
+
+### **Special Macros**
+| Macro | Description |
+|-------|-------------|
+| `LOGTIMER(name)` | RAII scope timer that logs duration on destruction |
+| `LOG_TO_FILE(...)` | Enable file logging (defaults to "debugtraces.log" if empty) |
+
+### **Compile-Time Controls**
+| Macro | Purpose |
+|-------|---------|
+| `TX_TRACE_ENABLED` | Global enable/disable (default: 1 in Debug, 0 in Release) |
+| `TX_TRACE_THIS_FILE` | Per-file override (0/1, overrides global setting) |
+| `TX_LOG_TO_FILE` | Default file logging state (default: 0) |
+| `TX_LOG_FILE_PATH` | Default log file path (default: "debugtraces.log") |
+
+### **API Functions**
+| Function | Description |
+|----------|-------------|
+| `tx_log_set_file_path(path)` | Set log file path (nullptr/"" uses "debugtraces.log") |
+| `tx_log_enable_file(enabled)` | Enable/disable file logging |
+| `tx_log_is_enabled()` | Check if logging is enabled |
+| `tx_log_flush()` | Flush file output buffer |
 
 ## Basic Usage
 
 ### Simple Logging
 ```cpp
 #include "DebugTracesLib.h"
-#include "Logger.h"
 
 int main() {
-    // Get logger instance and configure
-    auto* logger = TX_Logger::getPtr();
-    logger->setLogLevel(LogLevel::LL_DEBUG);
-    logger->logIntoFile("app.log", /*maxLines=*/10000);
+    // Enable file logging
+    LOG_TO_FILE();  // Uses "debugtraces.log"
+    // Or specify custom file:
+    // LOG_TO_FILE("myapp.log");
     
-    // Use convenient macros
-    TX_LOG_INFO("Application started");
-    TX_LOG_WARN("Warning: value=%d", 42);
-    TX_LOG_ERROR("Error occurred: %s", "file not found");
-    TX_LOG_DEBUG("Debug info: %p", &logger);
+    // Basic logging macros
+    LOGI("Application started");
+    LOGW("Warning: value=%d", 42);
+    LOGE("Error occurred: %s", "file not found");
+    LOGF("Fatal error - terminating");
+    TRACE("Debug trace message");
     
     return 0;
 }
 ```
 
-### Alternative Macro Style
+### Per-File Control
 ```cpp
-#include "Logger.h"
+// Disable logging for this file
+#define TX_TRACE_THIS_FILE 0
+#include "DebugTracesLib.h"
+// All macros are now no-ops in this file
 
-void someFunction() {
-    LogInfo("Information message");
-    LogWarn("Warning message"); 
-    LogError("Error message");
-    LogDebug("Debug message");  // Only in debug builds
-}
+// OR enable logging (inherits global setting by default)
+#define TX_TRACE_THIS_FILE 1  
+#include "DebugTracesLib.h"
+// All macros are active in this file
 ```
 
-### Stream-Style Logging
+### RAII Timing
 ```cpp
-#include "Logger.h"
+#include "DebugTracesLib.h"
 
-void streamExample() {
-    TraceInfo() << "Stream info: " << 123;
-    TraceWarning() << "Stream warning: " << "test";  
-    TraceError() << "Stream error: " << 456;
+void processAudio() {
+    LOGTIMER("AudioProcessing");  // Logs duration when scope exits
+    
+    // Your processing code here...
+    
+    // Timer automatically logs: "AudioProcessing took 42.123 ms"
+}
+
+void nestedTimers() {
+    LOGTIMER("OuterOperation");
+    {
+        LOGTIMER("InnerOperation");
+        // Inner work...
+    }  // Inner timer logs first
+    // More outer work...
+}  // Outer timer logs second
+```
+
+### File Output Control
+```cpp
+#include "DebugTracesLib.h"
+
+void configureLogging() {
+    // Method 1: Use LOG_TO_FILE macro (recommended)
+    LOG_TO_FILE("debug.log");          // Custom filename
+    LOG_TO_FILE();                     // Default "debugtraces.log"
+    
+    // Method 2: Direct API calls
+    tx_log_set_file_path("custom.log");
+    tx_log_enable_file(true);
+    
+    // Disable file output
+    tx_log_enable_file(false);
+    
+    // Force flush
+    tx_log_flush();
 }
 ```
 
 ## Advanced Features
 
-### Per-File Controls
+### Per-File Override System
 
-Define these macros **before** including the header to control per-compilation-unit behavior:
+The key feature is **per-file override** of the global logging state:
 
 ```cpp
-// Enable tracing for this file (shows compile-time banner)
+// File A: Disable logging entirely (all macros become no-ops)
+#define TX_TRACE_THIS_FILE 0  
+#include "DebugTracesLib.h"
+
+void criticalPath() {
+    LOGI("This won't log");        // Compiled to no-op
+    TRACE("This won't log either"); // Compiled to no-op
+    LOGTIMER("timing");           // Compiled to no-op
+}
+```
+
+```cpp
+// File B: Enable logging (overrides global setting)
 #define TX_TRACE_THIS_FILE 1
-
-// Enable time measurement helpers (debug builds only)  
-#define TX_MEASURE_TIME 1
-
-// Override log level for this specific file
-#define TX_LOG_LEVEL_FILE TX_LVL_DEBUG
-
 #include "DebugTracesLib.h"
 
-void myFunction() {
-    TRACE("This will log when TX_TRACE_THIS_FILE is enabled");
-    TX_LOG_DEBUG("File-specific debug message");
+void debugCode() {
+    LOGI("This will log");         // Active
+    TRACE("Debug information");    // Active
+    LOGTIMER("operation");        // Active - will log timing
 }
 ```
 
-### Time Measurement
+### Global Compile-Time Control
+
+Control the default behavior across your project:
 
 ```cpp
-#define TX_MEASURE_TIME 1
-#include "DebugTracesLib.h"
+// In CMake or compiler flags:
+// -DTX_TRACE_ENABLED=0    // Disable globally (Release builds)
+// -DTX_TRACE_ENABLED=1    // Enable globally (Debug builds)
 
-void timedOperation() {
-    TX_START_TIME_MEASUREMENT();
-    
-    // Your code here
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    
-    TX_PRINT_TIME_MEASUREMENT(); // Logs elapsed time in microseconds
-}
-
-void namedTimingContext() {
-    TX_START_TIME_MEAS_CTX(database_query);
-    
-    // Database operation
-    
-    TX_PRINT_TIME_MEAS_CTX(database_query); // Logs "Time Elapsed (database_query): X us"
-}
+// Default behavior (automatic):
+// Debug builds:   TX_TRACE_ENABLED=1 (logging active)
+// Release builds: TX_TRACE_ENABLED=0 (logging compiled out)
 ```
 
-### Compile-Time Log Level Control
+### Build System Integration
 
-```cpp
-// Global log level (affects all files)
-#define TX_LOG_LEVEL_GLOBAL TX_LVL_WARN  // Only WARN and ERROR will be compiled
+```cmake
+# CMakeLists.txt - Global control
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(TX_TRACE_ENABLED=1)
+    add_compile_definitions(TX_LOG_TO_FILE=1)
+else()
+    add_compile_definitions(TX_TRACE_ENABLED=0)
+endif()
 
-// File-specific override
-#define TX_LOG_LEVEL_FILE TX_LVL_DEBUG   // This file gets DEBUG and above
-
-#include "DebugTracesLib.h"
+# Optional: Set global file path
+add_compile_definitions(TX_LOG_FILE_PATH="app_debug.log")
 ```
 
-Available levels: `TX_LVL_DEBUG`, `TX_LVL_INFO`, `TX_LVL_WARN`, `TX_LVL_ERROR`
+### Output Format
+
+Log lines follow this format:
+```
+EPOCH_MS | TID | LEVEL | file:line func() | message
+```
+
+Example output:
+```
+1698765432123 | a1b2c3d4 | INFO | main.cpp:15 main() | Application started
+1698765432124 | a1b2c3d4 | WARN | audio.cpp:42 processBuffer() | Buffer underrun detected
+1698765432156 | a1b2c3d4 | INFO | audio.cpp:55 processBuffer() | AudioProcessing took 32.456 ms
+```
 
 ## CMake Integration
 
@@ -157,6 +236,7 @@ target_link_libraries(YourTarget PRIVATE DBGTX::dbgtracing)
 ### Build Options
 ```cmake
 # Enable tests (requires Google Test)
+# Creates a single dbgtracing_tests executable with all test files
 set(DBGTR_BUILD_TESTS ON)
 
 # Disable installation
@@ -190,13 +270,65 @@ mkdir -p build && cd build
 cmake .. -DDBGTR_BUILD_TESTS=ON
 
 # Build and run tests
-make
-ctest
+cmake --build .
+ctest --output-on-failure
+
+# Or run the test executable directly
+./dbgtracing_tests
+```
+
+## Usage Examples
+
+### Real-time Audio Thread
+```cpp
+// High-performance path - disable logging
+#define TX_TRACE_THIS_FILE 0
+#include "DebugTracesLib.h"
+
+void audioCallback() {
+    TRACE("This compiles to nothing");  // Zero overhead
+    LOGE("Even errors compile to nothing"); // Zero overhead
+}
+```
+
+### Development/Debug Code
+```cpp
+// Development path - enable logging  
+#define TX_TRACE_THIS_FILE 1
+#include "DebugTracesLib.h"
+
+void initAudio() {
+    LOG_TO_FILE("audio_debug.log");
+    LOGI("Audio system initializing");
+    
+    {
+        LOGTIMER("DeviceSetup");
+        setupAudioDevice();  // Timer logs duration automatically
+    }
+    
+    LOGI("Audio system ready");
+}
+```
+
+### Error Conditions Only
+```cpp
+// Production path - errors only
+#define TX_TRACE_THIS_FILE 1  // Enable logging
+#include "DebugTracesLib.h"
+
+void processData() {
+    // LOGI and TRACE calls for normal operation removed in production
+    
+    if (errorCondition) {
+        LOGE("Data processing failed: %s", errorMsg);  // Keep for debugging
+        LOGF("Critical failure - cannot continue");   // Keep fatal errors
+    }
+}
 ```
 
 ## Requirements
 
-- **C++20** compatible compiler
+- **C++11** or higher (for TxScopeTimer RAII, C interface works with C99)
 - **CMake 3.20** or higher  
 - **Google Test** (optional, for tests only)
 - **Ninja** or **Make** build system

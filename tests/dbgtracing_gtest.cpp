@@ -1,37 +1,363 @@
-
+// Test file for minimal DebugTraces API - thread safety and C/C++ compatibility
 #include <gtest/gtest.h>
-#include "Logger.h"
-#include "DebugTracesLib.h"
+
+// Test C++ interface
+#define TX_TRACE_THIS_FILE 1
+#include "../src/DebugTracesLib.h"
 
 #include <fstream>
 #include <string>
 #include <chrono>
 #include <thread>
+#include <vector>
+#include <atomic>
+#include <filesystem>
+#include <sstream>
+#include <regex>
 
-TEST(TXLogging, FileSinkWritesAndTrims) {
-  const std::string path = "txlogging_test.log";
-  // Start instance and route to file
-  TX_Logger::startInstance();
-  auto* lg = TX_Logger::getPtr();
-  lg->setLogLevel(LogLevel::LL_DEBUG);
-  lg->logIntoFile(path, /*maxLines=*/50);
+class MinimalDebugTracesTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        test_file_ = "test_debug.log";
+        // Clean up any existing test file
+        std::filesystem::remove(test_file_);
+    }
 
-  // Write > 60 lines
-  for (int i = 0; i < 60; ++i) {
-    lg->writeLine(LogLevel::LL_INFO, __FILE__, __LINE__, "line %d", i);
-  }
+    void TearDown() override {
+        // Disable file logging and clean up
+        tx_log_enable_file(false);
+        tx_log_flush();
+        std::filesystem::remove(test_file_);
+    }
 
-  // Give the background writer a moment to flush
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    std::string readLogFile() {
+        tx_log_flush();
+        std::ifstream file(test_file_);
+        if (!file.is_open()) return "";
+        
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        return buffer.str();
+    }
 
-  // Count lines
-  std::ifstream in(path);
-  ASSERT_TRUE(in.is_open());
-  size_t lines = 0; std::string s;
-  while (std::getline(in, s)) ++lines;
-  // Writer keeps 70% of max when trimming; max=50 => keep ~35..50 lines
-  EXPECT_LE(lines, 50u);
-  EXPECT_GE(lines, 30u);
+    std::string test_file_;
+};
 
-  TX_Logger::releaseInstance();
+// Test basic macro functionality
+TEST_F(MinimalDebugTracesTest, BasicMacros) {
+    LOG_TO_FILE(test_file_.c_str());
+    
+    LOGI("Test info message: %d", 42);
+    LOGW("Test warning message: %s", "warning");
+    LOGE("Test error message");
+    TRACE("Test trace message");
+    
+    std::string log_content = readLogFile();
+    EXPECT_TRUE(log_content.find("Test info message: 42") != std::string::npos);
+    EXPECT_TRUE(log_content.find("Test warning message: warning") != std::string::npos);
+    EXPECT_TRUE(log_content.find("Test error message") != std::string::npos);
+    EXPECT_TRUE(log_content.find("Test trace message") != std::string::npos);
+    
+    // Check format: EPOCH_MS | TID | LEVEL | file:line func() | message
+    EXPECT_TRUE(log_content.find("INFO") != std::string::npos);
+    EXPECT_TRUE(log_content.find("WARN") != std::string::npos);
+    EXPECT_TRUE(log_content.find("ERROR") != std::string::npos);
+    // DBG level has no level tag, so just check the message content from TRACE
+    EXPECT_TRUE(log_content.find("Test trace message") != std::string::npos);
+}
+
+// Test RAII timer
+TEST_F(MinimalDebugTracesTest, RAIITimer) {
+    LOG_TO_FILE(test_file_.c_str());
+    
+    {
+        LOGTIMER("TestOperation");
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    
+    std::string log_content = readLogFile();
+    EXPECT_TRUE(log_content.find("TestOperation took") != std::string::npos);
+    EXPECT_TRUE(log_content.find("ms") != std::string::npos);
+}
+
+// Test file path setting
+TEST_F(MinimalDebugTracesTest, FilePathSetting) {
+    std::string custom_file = "custom_debug.log";
+    std::filesystem::remove(custom_file);
+    
+    LOG_TO_FILE(custom_file.c_str());
+    LOGI("Message in custom file");
+    
+    tx_log_flush();
+    EXPECT_TRUE(std::filesystem::exists(custom_file));
+    
+    std::ifstream file(custom_file);
+    std::string content((std::istreambuf_iterator<char>(file)),
+                       std::istreambuf_iterator<char>());
+    EXPECT_TRUE(content.find("Message in custom file") != std::string::npos);
+    
+    std::filesystem::remove(custom_file);
+}
+
+// Test default file name
+TEST_F(MinimalDebugTracesTest, DefaultFileName) {
+    std::filesystem::remove("debugtraces.log");
+    
+    LOG_TO_FILE();  // Should use default "debugtraces.log"
+    LOGI("Default file message");
+    
+    tx_log_flush();
+    EXPECT_TRUE(std::filesystem::exists("debugtraces.log"));
+    
+    std::filesystem::remove("debugtraces.log");
+}
+
+// Test file logging enable/disable
+TEST_F(MinimalDebugTracesTest, FileLoggingControl) {
+    // Initially no file logging unless LOG_TO_FILE() is called
+    LOGI("This should not go to file");
+    EXPECT_FALSE(std::filesystem::exists(test_file_));
+    
+    // Enable file logging
+    LOG_TO_FILE(test_file_.c_str());
+    LOGI("This should go to file");
+    
+    std::string log_content = readLogFile();
+    EXPECT_TRUE(log_content.find("This should go to file") != std::string::npos);
+    EXPECT_TRUE(log_content.find("This should not go to file") == std::string::npos);
+    
+    // Disable file logging
+    tx_log_enable_file(false);
+    LOGI("This should not go to file either");
+    
+    // Should not have new content
+    std::string new_content = readLogFile();
+    EXPECT_TRUE(new_content.find("This should not go to file either") == std::string::npos);
+}
+
+// Test thread safety with multiple threads
+TEST_F(MinimalDebugTracesTest, ThreadSafety) {
+    LOG_TO_FILE(test_file_.c_str());
+    
+    const int num_threads = 10;
+    const int messages_per_thread = 100;
+    std::vector<std::thread> threads;
+    std::atomic<int> completed_threads{0};
+    
+    for (int i = 0; i < num_threads; ++i) {
+        threads.emplace_back([i, &completed_threads]() {
+            for (int j = 0; j < messages_per_thread; ++j) {
+                LOGI("Thread %d message %d", i, j);
+                LOGW("Thread %d warning %d", i, j);
+                TRACE("Thread %d trace %d", i, j);
+                
+                // Add some timing stress
+                {
+                    LOGTIMER("ThreadTimer");
+                    std::this_thread::sleep_for(std::chrono::microseconds(1));
+                }
+            }
+            completed_threads++;
+        });
+    }
+    
+    // Wait for all threads
+    for (auto& t : threads) {
+        t.join();
+    }
+    
+    EXPECT_EQ(completed_threads.load(), num_threads);
+    
+    std::string log_content = readLogFile();
+    
+    // Verify all threads wrote messages
+    for (int i = 0; i < num_threads; ++i) {
+        std::string thread_msg = "Thread " + std::to_string(i) + " message";
+        EXPECT_TRUE(log_content.find(thread_msg) != std::string::npos);
+    }
+    
+    // Count total log lines (should be num_threads * messages_per_thread * 4)
+    // 4 = LOGI + LOGW + TRACE + LOGTIMER per iteration
+    size_t line_count = 0;
+    size_t pos = 0;
+    while ((pos = log_content.find('\n', pos)) != std::string::npos) {
+        line_count++;
+        pos++;
+    }
+    
+    // Should have at least the expected number of lines
+    size_t expected_lines = num_threads * messages_per_thread * 4;
+    EXPECT_GE(line_count, expected_lines);
+}
+
+// Test C interface compatibility
+extern "C" {
+    void test_c_function() {
+        LOGI("Message from C function");
+        LOGE("Error from C function: %d", 123);
+        TRACE("C trace message");
+    }
+}
+
+TEST_F(MinimalDebugTracesTest, CCompatibility) {
+    LOG_TO_FILE(test_file_.c_str());
+    
+    test_c_function();
+    
+    std::string log_content = readLogFile();
+    EXPECT_TRUE(log_content.find("Message from C function") != std::string::npos);
+    EXPECT_TRUE(log_content.find("Error from C function: 123") != std::string::npos);
+    EXPECT_TRUE(log_content.find("C trace message") != std::string::npos);
+}
+
+// Forward declarations for per-file override test functions
+namespace TestDisabled {
+    void disabled_function();
+}
+
+namespace TestEnabled {
+    void enabled_function();
+}
+
+TEST_F(MinimalDebugTracesTest, PerFileOverride) {
+    LOG_TO_FILE(test_file_.c_str());
+    
+    // Call functions from both namespaces
+    TestDisabled::disabled_function();  // Should produce no output
+    TestEnabled::enabled_function();    // Should produce output
+    
+    std::string log_content = readLogFile();
+    
+    // Only the enabled function should have logged
+    EXPECT_TRUE(log_content.find("This should compile and log") != std::string::npos);
+    EXPECT_TRUE(log_content.find("This should work") != std::string::npos);
+    EXPECT_TRUE(log_content.find("EnabledTimer took") != std::string::npos);
+    
+    // The disabled function should not have logged
+    EXPECT_TRUE(log_content.find("This should not compile to anything") == std::string::npos);
+    EXPECT_TRUE(log_content.find("This should be a no-op") == std::string::npos);
+    EXPECT_TRUE(log_content.find("DisabledTimer") == std::string::npos);
+}
+
+// Test API functions
+TEST_F(MinimalDebugTracesTest, APIFunctions) {
+    // Test tx_log_is_enabled
+    EXPECT_TRUE(tx_log_is_enabled());
+    
+    // Test file path setting
+    tx_log_set_file_path(test_file_.c_str());
+    tx_log_enable_file(true);
+    
+    LOGI("API test message");
+    
+    std::string log_content = readLogFile();
+    EXPECT_TRUE(log_content.find("API test message") != std::string::npos);
+    
+    // Test flush
+    tx_log_flush();  // Should not crash
+}
+
+// Test format correctness 
+TEST_F(MinimalDebugTracesTest, LogFormat) {
+    LOG_TO_FILE(test_file_.c_str());
+    
+    LOGI("Format test message");
+    LOGD("Debug test message");  // DBG level should not show level tag
+    
+    std::string log_content = readLogFile();
+    
+    // Check format: <DateTime> [<Level>] <filename>:<line>: <Message>
+    // Should have datetime format YYYY-MM-DD HH:MM:SS.mmm
+    EXPECT_TRUE(std::regex_search(log_content, std::regex(R"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})")));
+    
+    // Should have INFO level in brackets (no spaces)
+    EXPECT_TRUE(log_content.find("[INFO]") != std::string::npos);
+    
+    // DEBUG level should NOT have [DEBUG] tag
+    EXPECT_TRUE(log_content.find("[DEBUG]") == std::string::npos);
+    EXPECT_TRUE(log_content.find("Debug test message") != std::string::npos);
+    
+    // Should have filename:line format
+    EXPECT_TRUE(std::regex_search(log_content, std::regex(R"(dbgtracing_gtest\.cpp:\d+:)")));
+    
+    // Should have the message
+    EXPECT_TRUE(log_content.find("Format test message") != std::string::npos);
+}
+
+// Performance test - ensure no-ops are truly no-ops
+TEST_F(MinimalDebugTracesTest, PerformanceNoOps) {
+    // This test verifies that disabled macros compile to no-ops
+    // In practice, you'd check assembly output, but we can at least verify
+    // that the disabled functions don't affect file output
+    
+    auto start = std::chrono::steady_clock::now();
+    
+    // Call disabled functions many times
+    for (int i = 0; i < 10000; ++i) {
+        TestDisabled::disabled_function();
+    }
+    
+    auto end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    
+    // Should be very fast since it's all no-ops
+    EXPECT_LT(duration.count(), 1000);  // Less than 1ms for 10k no-op calls
+    
+    // Should have no file created
+    EXPECT_FALSE(std::filesystem::exists(test_file_));
+}
+
+// Test ANSI color formatting (we check file output since console may strip colors)
+TEST_F(MinimalDebugTracesTest, ANSIColorFormat) {
+    LOG_TO_FILE(test_file_.c_str());
+    
+    // Test different log levels
+    LOGF("Fatal message");
+    LOGE("Error message");
+    LOGW("Warning message");
+    LOGI("Info message");
+    LOGD("Debug message");
+    
+    std::string log_content = readLogFile();
+    
+    // File output should not contain ANSI codes
+    EXPECT_TRUE(log_content.find("\033[") == std::string::npos);
+    
+    // Should have proper level tags (except DBG)
+    EXPECT_TRUE(log_content.find("[FATAL]") != std::string::npos);
+    EXPECT_TRUE(log_content.find("[ERROR]") != std::string::npos);
+    EXPECT_TRUE(log_content.find("[WARN]") != std::string::npos);
+    EXPECT_TRUE(log_content.find("[INFO]") != std::string::npos);
+    
+    // DBG should NOT have [DBG] tag (no level tag at all)
+    EXPECT_TRUE(log_content.find("[DBG]") == std::string::npos);
+    EXPECT_TRUE(log_content.find("[DEBUG]") == std::string::npos);
+    EXPECT_TRUE(log_content.find("Debug message") != std::string::npos);
+}
+
+// Test DEBUG level format (no level tag)
+TEST_F(MinimalDebugTracesTest, DebugLevelFormat) {
+    LOG_TO_FILE(test_file_.c_str());
+    
+    LOGD("This is a debug message");
+    LOGI("This is an info message");
+    
+    std::string log_content = readLogFile();
+    
+    // Should have INFO with level tag
+    EXPECT_TRUE(log_content.find("[INFO]") != std::string::npos);
+    EXPECT_TRUE(log_content.find("This is an info message") != std::string::npos);
+    
+    // DEBUG should have NO level tag, just datetime and location
+    EXPECT_TRUE(log_content.find("[DEBUG]") == std::string::npos);
+    EXPECT_TRUE(log_content.find("This is a debug message") != std::string::npos);
+    
+    // Should have proper format: <DateTime> <filename>:<line>: <Message>
+    EXPECT_TRUE(std::regex_search(log_content, 
+        std::regex(R"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} dbgtracing_gtest\.cpp:\d+: This is a debug message)")));
+}
+
+int main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }
