@@ -57,7 +57,7 @@ static const char* get_level_color(TxLogLevel lvl) {
         case TxLogLevel::ERROR: return "\033[0;31m";  // Red
         case TxLogLevel::WARN:  return "\033[0;33m";  // Yellow
         case TxLogLevel::INFO:  return "\033[0;32m";  // Green
-        case TxLogLevel::DBG: return "\033[0;36m";    // Cyan
+        case TxLogLevel::DBG: return "";              // No color for TRACE/DEBUG
         default: return "\033[0m";                    // Reset
     }
 }
