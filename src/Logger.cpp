@@ -18,6 +18,7 @@
 static std::mutex g_log_mu;
 static std::string g_file_path = TX_LOG_FILE_PATH;
 static std::atomic<bool> g_file_enabled{false};  // Only log to file if LOG_TO_FILE() is called
+static std::atomic<bool> g_thread_id_enabled{TRACE_THREAD_ID != 0};  // Runtime thread ID control
 static std::ofstream g_file_stream;
 
 // RAII cleanup class to close file on process exit
@@ -100,11 +101,14 @@ void tx_log_emit(TxLogLevel lvl, const char* file, int line,
     const char* color = get_level_color(lvl);
     const char* reset_color = "\033[0m";
     
-    // Format log line based on TRACE_THREAD_ID and level requirements
+    // Format log line based on runtime thread ID setting and level requirements
     char logline_console[4096];
     char logline_file[4096];  // File output without ANSI colors
     
-#if TRACE_THREAD_ID
+    // Check if thread ID should be included (runtime control)
+    bool include_thread_id = g_thread_id_enabled.load();
+    
+    if (include_thread_id) {
         // Format: <DateTime> [<Level>][<ThreadID>] <filename>:<line>: <Message>
         uint64_t thread_id = get_thread_id();
         if (strlen(level_str) > 0) {
@@ -126,7 +130,7 @@ void tx_log_emit(TxLogLevel lvl, const char* file, int line,
                      "%s [%llx] %s:%d: %s\n",
                      datetime.c_str(), thread_id, basename, line, message);
         }
-#else
+    } else {
         // Format: <DateTime> [<Level>] <filename>:<line>: <Message>
         if (strlen(level_str) > 0) {
             // Non-DEBUG levels with color
@@ -146,7 +150,7 @@ void tx_log_emit(TxLogLevel lvl, const char* file, int line,
                      "%s %s:%d: %s\n",
                      datetime.c_str(), basename, line, message);
         }
-#endif
+    }
     
     // Output to console with colors
     fprintf(stderr, "%s", logline_console);
@@ -190,6 +194,14 @@ void tx_log_flush() {
     if (g_file_stream.is_open()) {
         g_file_stream.flush();
     }
+}
+
+void tx_log_enable_thread_id(bool enabled) {
+    g_thread_id_enabled.store(enabled);
+}
+
+bool tx_log_is_thread_id_enabled() {
+    return g_thread_id_enabled.load();
 }
 
 } // extern "C"

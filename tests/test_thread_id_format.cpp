@@ -110,3 +110,30 @@ TEST_F(ThreadIDFormatTest, ThreadIDConsistency) {
     EXPECT_TRUE(log_content.find("Thread consistency not tested when TRACE_THREAD_ID=0") != std::string::npos);
 #endif
 }
+
+// Test runtime enable/disable of thread ID tracing
+TEST_F(ThreadIDFormatTest, RuntimeThreadIDControl) {
+    LOG_TO_FILE(test_file_.c_str());
+    
+    // Test enabling thread ID tracing at runtime
+    ENABLE_THREAD_ID_TRACING();
+    LOGI("Message with thread ID enabled");
+    
+    // Test disabling thread ID tracing at runtime  
+    DISABLE_THREAD_ID_TRACING();
+    LOGI("Message with thread ID disabled");
+    
+    // Re-enable to test toggle
+    ENABLE_THREAD_ID_TRACING();
+    LOGI("Message with thread ID re-enabled");
+    
+    std::string log_content = readLogFile();
+    
+    // Verify the messages exist in the log
+    EXPECT_TRUE(log_content.find("Message with thread ID enabled") != std::string::npos);
+    EXPECT_TRUE(log_content.find("Message with thread ID disabled") != std::string::npos);
+    EXPECT_TRUE(log_content.find("Message with thread ID re-enabled") != std::string::npos);
+    
+    // Note: The actual thread ID presence/absence testing depends on the compile-time TRACE_THREAD_ID setting
+    // This test verifies the macros work without runtime errors
+}

@@ -50,6 +50,8 @@ void tx_log_set_file_path(const char* path);  // nullptr/"" -> "debugtraces.log"
 void tx_log_enable_file(bool enabled);
 bool tx_log_is_enabled();
 void tx_log_flush();
+void tx_log_enable_thread_id(bool enabled);
+bool tx_log_is_thread_id_enabled();
 
 #ifdef __cplusplus
 }
@@ -91,6 +93,10 @@ inline void tx_log_to_file_helper(const char* filename = nullptr) {
 
 #define LOG_TO_FILE(...) tx_log_to_file_helper(__VA_ARGS__)
 
+// -------- Thread ID Control Macros --------
+#define ENABLE_THREAD_ID_TRACING() tx_log_enable_thread_id(true)
+#define DISABLE_THREAD_ID_TRACING() tx_log_enable_thread_id(false)
+
 #else  // TX_TRACE_THIS_FILE == 0  →  per-file no-ops
 
 enum class TxLogLevel : uint8_t { FATAL=0, ERROR=1, WARN=2, INFO=3, DBG=4 };
@@ -119,7 +125,9 @@ struct TxScopeTimer { TxScopeTimer(const char*, const char*, int, const char*) n
 #define LOGD(...)   do{}while(0)
 #define TRACE(...)  do{}while(0)
 #define LOGTIMER(...) do{}while(0)
-#define LOG_TO_FILE(...)
+#define LOG_TO_FILE(...) do{}while(0)
+#define ENABLE_THREAD_ID_TRACING() do{}while(0)
+#define DISABLE_THREAD_ID_TRACING() do{}while(0)
 
 inline void tx_log_to_file_helper(const char* filename = nullptr) { (void)filename; }
 

@@ -23,12 +23,13 @@ cmake/
 
 ## Features
 
-- **Minimal API**: Only 7 macros (`LOGF`, `LOGE`, `LOGW`, `LOGI`, `TRACE`, `LOGTIMER`, `LOG_FILE`)
+- **Minimal API**: Only 9 macros (`LOGF`, `LOGE`, `LOGW`, `LOGI`, `TRACE`, `LOGTIMER`, `LOG_TO_FILE`, `ENABLE_THREAD_ID_TRACING`, `DISABLE_THREAD_ID_TRACING`)
 - **Per-File Override**: `TX_TRACE_THIS_FILE` controls logging per compilation unit
 - **Compile-Time Stripping**: Disabled logging compiles to no-ops (zero overhead)
 - **Thread-Safe**: Mutex-protected logging with no heap allocations in hot paths
 - **Dual Output**: Console (stderr) and optional file output with configurable paths
 - **RAII Timing**: `LOGTIMER(name)` automatically logs scope duration
+- **Runtime Thread ID Control**: Enable/disable thread ID display at runtime
 - **Cross-Platform**: Works on macOS, iOS, Linux, Windows
 - **C/C++ Compatible**: Works in both C and C++ projects
 
@@ -49,6 +50,12 @@ cmake/
 | `LOGTIMER(name)` | RAII scope timer that logs duration on destruction |
 | `LOG_TO_FILE(...)` | Enable file logging (defaults to "debugtraces.log" if empty) |
 
+### **Runtime Thread ID Control**
+| Macro | Description |
+|-------|-------------|
+| `ENABLE_THREAD_ID_TRACING()` | Enable thread ID display in log messages at runtime |
+| `DISABLE_THREAD_ID_TRACING()` | Disable thread ID display in log messages at runtime |
+
 ### **Compile-Time Controls**
 | Macro | Purpose |
 |-------|---------|
@@ -64,6 +71,8 @@ cmake/
 | `tx_log_enable_file(enabled)` | Enable/disable file logging |
 | `tx_log_is_enabled()` | Check if logging is enabled |
 | `tx_log_flush()` | Flush file output buffer |
+| `tx_log_enable_thread_id(enabled)` | Enable/disable thread ID display at runtime |
+| `tx_log_is_thread_id_enabled()` | Check if thread ID display is enabled |
 
 ## Basic Usage
 
@@ -144,6 +153,34 @@ void configureLogging() {
 }
 ```
 
+### Runtime Thread ID Control
+```cpp
+#include "DebugTracesLib.h"
+
+void demonstrateThreadIDControl() {
+    LOG_TO_FILE("demo.log");
+    
+    // Enable thread ID display at runtime
+    ENABLE_THREAD_ID_TRACING();
+    LOGI("Message with thread ID: [%llx]", (unsigned long long)std::this_thread::get_id());
+    
+    // Disable thread ID display at runtime
+    DISABLE_THREAD_ID_TRACING();  
+    LOGI("Message without thread ID");
+    
+    // Re-enable for debugging
+    ENABLE_THREAD_ID_TRACING();
+    LOGI("Thread ID is back in logs");
+    
+    // Direct API usage
+    tx_log_enable_thread_id(false);  // Disable
+    LOGI("Direct API: no thread ID");
+    
+    tx_log_enable_thread_id(true);   // Enable
+    LOGI("Direct API: thread ID shown");
+}
+```
+
 ## Advanced Features
 
 ### Per-File Override System
@@ -205,16 +242,19 @@ add_compile_definitions(TX_LOG_FILE_PATH="app_debug.log")
 
 ### Output Format
 
-Log lines follow this format:
+Log lines follow this format (thread ID can be enabled/disabled at runtime):
 ```
-EPOCH_MS | TID | LEVEL | file:line func() | message
+DateTime [LEVEL][ThreadID] file:line: message     // With thread ID enabled
+DateTime [LEVEL] file:line: message               // With thread ID disabled  
+DateTime file:line: message                       // TRACE level (no level tag, no color)
 ```
 
 Example output:
 ```
-1698765432123 | a1b2c3d4 | INFO | main.cpp:15 main() | Application started
-1698765432124 | a1b2c3d4 | WARN | audio.cpp:42 processBuffer() | Buffer underrun detected
-1698765432156 | a1b2c3d4 | INFO | audio.cpp:55 processBuffer() | AudioProcessing took 32.456 ms
+2025-10-31 18:26:59.456 [INFO][b28167a0c6f5562f] main.cpp:15: Application started
+2025-10-31 18:26:59.457 [INFO] main.cpp:20: Thread ID disabled  
+2025-10-31 18:26:59.458 main.cpp:25: Debug trace message
+2025-10-31 18:26:59.459 [WARN][b28167a0c6f5562f] audio.cpp:42: Buffer underrun detected
 ```
 
 ## CMake Integration
@@ -299,6 +339,9 @@ void audioCallback() {
 
 void initAudio() {
     LOG_TO_FILE("audio_debug.log");
+    
+    // Enable thread ID for debugging multi-threaded initialization
+    ENABLE_THREAD_ID_TRACING();
     LOGI("Audio system initializing");
     
     {
@@ -306,6 +349,8 @@ void initAudio() {
         setupAudioDevice();  // Timer logs duration automatically
     }
     
+    // Disable thread ID for cleaner production logs
+    DISABLE_THREAD_ID_TRACING();
     LOGI("Audio system ready");
 }
 ```
