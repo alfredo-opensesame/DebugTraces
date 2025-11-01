@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include "TraceColors.h"
 
 // ================= Global compile-time controls =================
 #ifndef TX_TRACE_ENABLED
@@ -68,12 +69,30 @@ struct TxScopeTimer {
 #endif
 
 // -------- Macros (only these) --------
+#if __cplusplus >= 202002L || (defined(__clang__) && __clang_major__ >= 9) || (defined(__GNUC__) && __GNUC__ >= 10)
+// C++20 or recent compiler: use __VA_OPT__ for standards compliance
+#define LOGF(fmt, ...) tx_log_emit(TxLogLevel::FATAL, __FILE__, __LINE__, __func__, fmt __VA_OPT__(,) __VA_ARGS__)
+#define LOGE(fmt, ...) tx_log_emit(TxLogLevel::ERROR, __FILE__, __LINE__, __func__, fmt __VA_OPT__(,) __VA_ARGS__)
+#define LOGW(fmt, ...) tx_log_emit(TxLogLevel::WARN,  __FILE__, __LINE__, __func__, fmt __VA_OPT__(,) __VA_ARGS__)
+#define LOGI(fmt, ...) tx_log_emit(TxLogLevel::INFO,  __FILE__, __LINE__, __func__, fmt __VA_OPT__(,) __VA_ARGS__)
+#define LOGD(fmt, ...) tx_log_emit(TxLogLevel::DBG, __FILE__, __LINE__, __func__, fmt __VA_OPT__(,) __VA_ARGS__)
+#define TRACE(fmt, ...) tx_log_emit(TxLogLevel::DBG, __FILE__, __LINE__, __func__, fmt __VA_OPT__(,) __VA_ARGS__)
+#else
+// Fallback for older compilers: suppress the warning with pragma
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-zero-variadic-macro-arguments"
+#endif
 #define LOGF(fmt, ...) tx_log_emit(TxLogLevel::FATAL, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 #define LOGE(fmt, ...) tx_log_emit(TxLogLevel::ERROR, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 #define LOGW(fmt, ...) tx_log_emit(TxLogLevel::WARN,  __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 #define LOGI(fmt, ...) tx_log_emit(TxLogLevel::INFO,  __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 #define LOGD(fmt, ...) tx_log_emit(TxLogLevel::DBG, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 #define TRACE(fmt, ...) tx_log_emit(TxLogLevel::DBG, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+#endif
 
 #ifdef __cplusplus
 #define LOGTIMER(name) ::TxScopeTimer _tx_scope_timer_##__LINE__{(name), __FILE__, __LINE__, __func__}

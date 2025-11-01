@@ -11,6 +11,7 @@
 #include <atomic>
 #include <iomanip>
 #include <sstream>
+#include <filesystem>
 
 #if TX_TRACE_ENABLED
 
@@ -51,6 +52,41 @@ static uint64_t get_thread_id() {
     return hasher(std::this_thread::get_id());
 }
 
+// Helper to ensure directory exists for log file
+static bool ensure_log_directory(const std::string& file_path) {
+    try {
+        std::filesystem::path path(file_path);
+        std::filesystem::path dir = path.parent_path();
+        
+        if (!dir.empty() && !std::filesystem::exists(dir)) {
+            return std::filesystem::create_directories(dir);
+        }
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+// Helper to strip ANSI escape sequences from text for file output
+static std::string strip_ansi_codes(const char* text) {
+    std::string result;
+    const char* p = text;
+    
+    while (*p) {
+        if (*p == '\033' && *(p + 1) == '[') {
+            // Found ANSI escape sequence, skip until 'm'
+            p += 2;
+            while (*p && *p != 'm') {
+                p++;
+            }
+            if (*p == 'm') p++; // Skip the 'm'
+        } else {
+            result += *p++;
+        }
+    }
+    return result;
+}
+
 // ANSI color codes for different log levels
 static const char* get_level_color(TxLogLevel lvl) {
     switch (lvl) {
@@ -88,6 +124,9 @@ void tx_log_emit(TxLogLevel lvl, const char* file, int line,
     vsnprintf(message, sizeof(message), fmt, args);
     va_end(args);
     
+    // Create stripped version for file output
+    std::string message_for_file = strip_ansi_codes(message);
+    
     // Extract basename from file path
     const char* basename = strrchr(file, '/');
     if (!basename) basename = strrchr(file, '\\');
@@ -119,7 +158,7 @@ void tx_log_emit(TxLogLevel lvl, const char* file, int line,
                      thread_id, basename, line, message);
             snprintf(logline_file, sizeof(logline_file), 
                      "%s [%s][%llx] %s:%d: %s\n",
-                     datetime.c_str(), level_str, thread_id, basename, line, message);
+                     datetime.c_str(), level_str, thread_id, basename, line, message_for_file.c_str());
         } else {
             // DEBUG level (no level tag)
             snprintf(logline_console, sizeof(logline_console), 
@@ -128,7 +167,7 @@ void tx_log_emit(TxLogLevel lvl, const char* file, int line,
                      basename, line, message);
             snprintf(logline_file, sizeof(logline_file), 
                      "%s [%llx] %s:%d: %s\n",
-                     datetime.c_str(), thread_id, basename, line, message);
+                     datetime.c_str(), thread_id, basename, line, message_for_file.c_str());
         }
     } else {
         // Format: <DateTime> [<Level>] <filename>:<line>: <Message>
@@ -140,7 +179,7 @@ void tx_log_emit(TxLogLevel lvl, const char* file, int line,
                      basename, line, message);
             snprintf(logline_file, sizeof(logline_file), 
                      "%s [%s] %s:%d: %s\n",
-                     datetime.c_str(), level_str, basename, line, message);
+                     datetime.c_str(), level_str, basename, line, message_for_file.c_str());
         } else {
             // DEBUG level (no level tag)
             snprintf(logline_console, sizeof(logline_console), 
@@ -148,7 +187,7 @@ void tx_log_emit(TxLogLevel lvl, const char* file, int line,
                      datetime.c_str(), color, basename, line, message, reset_color);
             snprintf(logline_file, sizeof(logline_file), 
                      "%s %s:%d: %s\n",
-                     datetime.c_str(), basename, line, message);
+                     datetime.c_str(), basename, line, message_for_file.c_str());
         }
     }
     
@@ -158,7 +197,10 @@ void tx_log_emit(TxLogLevel lvl, const char* file, int line,
     // Output to file without colors if enabled
     if (g_file_enabled.load()) {
         if (!g_file_stream.is_open()) {
-            g_file_stream.open(g_file_path, std::ios::app);
+            // Ensure directory exists before opening file
+            if (ensure_log_directory(g_file_path)) {
+                g_file_stream.open(g_file_path, std::ios::app);
+            }
         }
         if (g_file_stream.is_open()) {
             g_file_stream << logline_file;

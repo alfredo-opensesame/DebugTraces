@@ -14,6 +14,7 @@
 extern "C" {
 #endif
 
+#define ANSI_API "\033[1;92m"  // Bright bold green for API traces
 // =============================================================================
 // ANSI Reset Code
 // =============================================================================
@@ -35,7 +36,9 @@ extern "C" {
 // =============================================================================
 // Text Colors for Thread and General Tracing
 // =============================================================================
-#define ANSI_BRIGHT_BLUE "\033[94m"              // Bright blue text for threads
+#define ANSI_BRIGHT_BLUE  "\033[94m"             // Bright blue text for threads
+#define ANSI_BRIGHT_GREEN "\033[92m"             // Bright green text for success/requests
+#define ANSI_BRIGHT_RED   "\033[91m"             // Bright red text for errors/shutdown
 
 #ifdef __cplusplus
 }

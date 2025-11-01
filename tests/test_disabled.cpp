@@ -1,5 +1,5 @@
 // Separate file with logging disabled for testing per-file override
-#define TX_TRACE_THIS_FILE 0
+#define TX_TRACE_THIS_FILE 1
 #include "../src/DebugTracesLib.h"
 
 namespace TestDisabled {
