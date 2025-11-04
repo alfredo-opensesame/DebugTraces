@@ -39,6 +39,10 @@ extern "C" {
 #define ANSI_BRIGHT_BLUE  "\033[94m"             // Bright blue text for threads
 #define ANSI_BRIGHT_GREEN "\033[92m"             // Bright green text for success/requests
 #define ANSI_BRIGHT_RED   "\033[91m"             // Bright red text for errors/shutdown
+#define ANSI_BRIGHT_CYAN  "\033[96m"             // Bright cyan text for encoders/controls
+#define ANSI_BRIGHT_MAGENTA "\033[95m"           // Bright magenta text for displays/timecode
+#define ANSI_BRIGHT_YELLOW "\033[93m"            // Bright yellow text for state/jogwheel
+#define ANSI_BRIGHT_WHITE "\033[97m"             // Bright white text for buttons/touch
 
 #ifdef __cplusplus
 }
