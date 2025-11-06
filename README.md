@@ -105,7 +105,7 @@ int main() {
 // All macros are now no-ops in this file
 
 // OR enable logging (inherits global setting by default)
-#define TX_TRACE_THIS_FILE 1  
+#define TX_TRACE_THIS_FILE 0  
 #include "DebugTracesLib.h"
 // All macros are active in this file
 ```
@@ -201,7 +201,7 @@ void criticalPath() {
 
 ```cpp
 // File B: Enable logging (overrides global setting)
-#define TX_TRACE_THIS_FILE 1
+#define TX_TRACE_THIS_FILE 0
 #include "DebugTracesLib.h"
 
 void debugCode() {
@@ -334,7 +334,7 @@ void audioCallback() {
 ### Development/Debug Code
 ```cpp
 // Development path - enable logging  
-#define TX_TRACE_THIS_FILE 1
+#define TX_TRACE_THIS_FILE 0
 #include "DebugTracesLib.h"
 
 void initAudio() {
@@ -358,7 +358,7 @@ void initAudio() {
 ### Error Conditions Only
 ```cpp
 // Production path - errors only
-#define TX_TRACE_THIS_FILE 1  // Enable logging
+#define TX_TRACE_THIS_FILE 0  // Enable logging
 #include "DebugTracesLib.h"
 
 void processData() {

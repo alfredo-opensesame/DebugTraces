@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 
 /* Enable tracing for this test file */
-#define TX_TRACE_THIS_FILE 1
+#define TX_TRACE_THIS_FILE 0
 
 #include "../src/DebugTracesLib.h"
 #include <chrono>

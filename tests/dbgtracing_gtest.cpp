@@ -2,7 +2,7 @@
 #include <gtest/gtest.h>
 
 // Test C++ interface
-#define TX_TRACE_THIS_FILE 1
+#define TX_TRACE_THIS_FILE 0
 #include "../src/DebugTracesLib.h"
 
 #include <fstream>
