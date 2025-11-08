@@ -124,13 +124,14 @@ enum class TxLogLevel : uint8_t { FATAL=0, ERROR=1, WARN=2, INFO=3, DBG=4 };
 extern "C" {
 #endif
 
-inline void tx_log_emit(TxLogLevel, const char*, int, const char*, const char*, ...) {}
-inline void tx_log_set_file_path(const char*) {}
-inline void tx_log_enable_file(bool) {}
-inline void tx_log_enable_thread_id(bool) {}
-inline bool tx_log_is_thread_id_enabled() { return false; }
-inline bool tx_log_is_enabled() { return false; }
-inline void tx_log_flush() {}
+// Function declarations - implementations provided in Logger.cpp
+void tx_log_emit(TxLogLevel, const char*, int, const char*, const char*, ...);
+void tx_log_set_file_path(const char*);
+void tx_log_enable_file(bool);
+void tx_log_enable_thread_id(bool);
+bool tx_log_is_thread_id_enabled();
+bool tx_log_is_enabled();
+void tx_log_flush();
 
 #ifdef __cplusplus
 }

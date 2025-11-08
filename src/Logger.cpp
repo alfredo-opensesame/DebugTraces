@@ -266,4 +266,39 @@ TxScopeTimer::~TxScopeTimer() noexcept {
     tx_log_emit(TxLogLevel::INFO, file, line, func, "%s took %.3f ms", name, duration_ms);
 }
 
+#else  // TX_TRACE_ENABLED == 0
+
+// Provide stub implementations when tracing is disabled (Release builds)
+extern "C" {
+
+void tx_log_emit(TxLogLevel, const char*, int, const char*, const char*, ...) {
+    // No-op stub for Release builds
+}
+
+void tx_log_set_file_path(const char*) {
+    // No-op stub for Release builds
+}
+
+void tx_log_enable_file(bool) {
+    // No-op stub for Release builds
+}
+
+void tx_log_enable_thread_id(bool) {
+    // No-op stub for Release builds
+}
+
+bool tx_log_is_thread_id_enabled() {
+    return false;
+}
+
+bool tx_log_is_enabled() {
+    return false;
+}
+
+void tx_log_flush() {
+    // No-op stub for Release builds
+}
+
+} // extern "C"
+
 #endif // TX_TRACE_ENABLED
