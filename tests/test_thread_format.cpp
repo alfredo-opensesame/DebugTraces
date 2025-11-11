@@ -1,6 +1,6 @@
 // Google Test file to verify thread ID format with TRACE_THREAD_ID=1
 #define TRACE_THREAD_ID 1
-#define TX_TRACE_THIS_FILE 0
+#define TX_TRACE_THIS_FILE 1
 
 #include <gtest/gtest.h>
 #include "../src/DebugTracesLib.h"

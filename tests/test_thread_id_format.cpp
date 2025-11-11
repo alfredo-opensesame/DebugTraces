@@ -1,7 +1,7 @@
 // Test file for thread ID formatting - tests both TRACE_THREAD_ID=0 and TRACE_THREAD_ID=1 scenarios
 #include <gtest/gtest.h>
 
-#define TX_TRACE_THIS_FILE 0
+#define TX_TRACE_THIS_FILE 1
 #include "../src/DebugTracesLib.h"
 
 #include <fstream>
