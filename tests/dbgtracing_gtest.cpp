@@ -17,8 +17,18 @@
 class MinimalDebugTracesTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        test_file_ = "test_debug.log";
-        // Clean up any existing test file
+        // Use a unique file name per test to avoid cross-process race conditions when
+        // ctest runs multiple test cases in parallel (each test runs in its own process
+        // but they previously shared the same file name). A concurrent test removing
+        // the common file could lead to empty/absent content here.
+        const ::testing::TestInfo* info = ::testing::UnitTest::GetInstance()->current_test_info();
+        std::string uniqueName = "shared";
+        if (info) {
+            uniqueName = std::string(info->test_suite_name()) + "_" + info->name();
+        }
+        // Sanitize name (replace any spaces just in case)
+        std::replace(uniqueName.begin(), uniqueName.end(), ' ', '_');
+        test_file_ = std::string("test_debug_") + uniqueName + ".log";
         std::filesystem::remove(test_file_);
     }
 
@@ -317,6 +327,7 @@ TEST_F(MinimalDebugTracesTest, ANSIColorFormat) {
     LOGI("Info message");
     LOGD("Debug message");
     
+    // Flush and read the file content (unique per test, so no cross-test interference)
     std::string log_content = readLogFile();
     
     // File output should not contain ANSI codes
