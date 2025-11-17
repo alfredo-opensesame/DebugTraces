@@ -13,11 +13,21 @@
 #include <sstream>
 #include <filesystem>
 
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#include <sys/types.h>
+#endif
+
 #if TX_TRACE_ENABLED
+
+// Forward declaration for initialization
+static std::string get_initial_file_path();
 
 // Global state
 static std::mutex g_log_mu;
-static std::string g_file_path = TX_LOG_FILE_PATH;
+static std::string g_file_path = get_initial_file_path();  // Process-unique by default
 static std::atomic<bool> g_file_enabled{false};  // Only log to file if LOG_TO_FILE() is called
 static std::atomic<bool> g_thread_id_enabled{TRACE_THREAD_ID != 0};  // Runtime thread ID control
 static std::ofstream g_file_stream;
@@ -50,6 +60,43 @@ static std::string get_datetime() {
 static uint64_t get_thread_id() {
     std::hash<std::thread::id> hasher;
     return hasher(std::this_thread::get_id());
+}
+
+// Helper to get process ID
+static uint32_t get_process_id() {
+#ifdef _WIN32
+    return static_cast<uint32_t>(_getpid());
+#else
+    return static_cast<uint32_t>(getpid());
+#endif
+}
+
+// Helper to make file path process-unique
+static std::string make_process_unique_path(const std::string& base_path) {
+    if (base_path.empty()) {
+        return base_path;
+    }
+    
+    // Find the extension
+    size_t dot_pos = base_path.find_last_of('.');
+    std::string name_part, ext_part;
+    
+    if (dot_pos != std::string::npos) {
+        name_part = base_path.substr(0, dot_pos);
+        ext_part = base_path.substr(dot_pos);
+    } else {
+        name_part = base_path;
+        ext_part = "";
+    }
+    
+    // Insert process ID before extension
+    uint32_t pid = get_process_id();
+    return name_part + "_pid" + std::to_string(pid) + ext_part;
+}
+
+// Helper to get initial process-unique file path
+static std::string get_initial_file_path() {
+    return make_process_unique_path(TX_LOG_FILE_PATH);
 }
 
 // Helper to ensure directory exists for log file
@@ -140,59 +187,63 @@ void tx_log_emit(TxLogLevel lvl, const char* file, int line,
     const char* color = get_level_color(lvl);
     const char* reset_color = "\033[0m";
     
-    // Format log line based on runtime thread ID setting and level requirements
+    // Format log line with process ID and optional thread ID for multi-process safety
     char logline_console[4096];
     char logline_file[4096];  // File output without ANSI colors
     
-    // Check if thread ID should be included (runtime control)
+    // Always include process ID for multi-process environments
+    uint32_t process_id = get_process_id();
     bool include_thread_id = g_thread_id_enabled.load();
     
     if (include_thread_id) {
-        // Format: <DateTime> [<Level>][<ThreadID>] <filename>:<line>: <Message>
+        // Format: <DateTime> [<Level>][PID:<ProcessID>][TID:<ThreadID>] <filename>:<line>: <Message>
         uint64_t thread_id = get_thread_id();
         if (strlen(level_str) > 0) {
             // Non-DEBUG levels with color
             snprintf(logline_console, sizeof(logline_console), 
-                     "%s %s[%s]%s[%llx] %s:%d: %s\n",
+                     "%s %s[%s]%s[PID:%u][TID:%llx] %s:%d: %s\n",
                      datetime.c_str(), color, level_str, reset_color, 
-                     thread_id, basename, line, message);
+                     process_id, thread_id, basename, line, message);
             snprintf(logline_file, sizeof(logline_file), 
-                     "%s [%s][%llx] %s:%d: %s\n",
-                     datetime.c_str(), level_str, thread_id, basename, line, message_for_file.c_str());
+                     "%s [%s][PID:%u][TID:%llx] %s:%d: %s\n",
+                     datetime.c_str(), level_str, process_id, thread_id, basename, line, message_for_file.c_str());
         } else {
             // DEBUG level (no level tag)
             snprintf(logline_console, sizeof(logline_console), 
-                     "%s %s[%llx]%s %s:%d: %s\n",
-                     datetime.c_str(), color, thread_id, reset_color, 
+                     "%s %s[PID:%u][TID:%llx]%s %s:%d: %s\n",
+                     datetime.c_str(), color, process_id, thread_id, reset_color, 
                      basename, line, message);
             snprintf(logline_file, sizeof(logline_file), 
-                     "%s [%llx] %s:%d: %s\n",
-                     datetime.c_str(), thread_id, basename, line, message_for_file.c_str());
+                     "%s [PID:%u][TID:%llx] %s:%d: %s\n",
+                     datetime.c_str(), process_id, thread_id, basename, line, message_for_file.c_str());
         }
     } else {
-        // Format: <DateTime> [<Level>] <filename>:<line>: <Message>
+        // Format: <DateTime> [<Level>][PID:<ProcessID>] <filename>:<line>: <Message>
         if (strlen(level_str) > 0) {
             // Non-DEBUG levels with color
             snprintf(logline_console, sizeof(logline_console), 
-                     "%s %s[%s]%s %s:%d: %s\n",
+                     "%s %s[%s]%s[PID:%u] %s:%d: %s\n",
                      datetime.c_str(), color, level_str, reset_color, 
-                     basename, line, message);
+                     process_id, basename, line, message);
             snprintf(logline_file, sizeof(logline_file), 
-                     "%s [%s] %s:%d: %s\n",
-                     datetime.c_str(), level_str, basename, line, message_for_file.c_str());
+                     "%s [%s][PID:%u] %s:%d: %s\n",
+                     datetime.c_str(), level_str, process_id, basename, line, message_for_file.c_str());
         } else {
             // DEBUG level (no level tag)
             snprintf(logline_console, sizeof(logline_console), 
-                     "%s %s%s:%d: %s%s\n",
-                     datetime.c_str(), color, basename, line, message, reset_color);
+                     "%s %s[PID:%u]%s %s:%d: %s\n",
+                     datetime.c_str(), color, process_id, reset_color, 
+                     basename, line, message);
             snprintf(logline_file, sizeof(logline_file), 
-                     "%s %s:%d: %s\n",
-                     datetime.c_str(), basename, line, message_for_file.c_str());
+                     "%s [PID:%u] %s:%d: %s\n",
+                     datetime.c_str(), process_id, basename, line, message_for_file.c_str());
         }
     }
     
-    // Output to console with colors
-    fprintf(stderr, "%s", logline_console);
+    // Output to console with colors (use fwrite for atomic output)
+    size_t console_len = strlen(logline_console);
+    fwrite(logline_console, 1, console_len, stderr);
+    fflush(stderr);
     
     // Output to file without colors if enabled
     if (g_file_enabled.load()) {
@@ -211,7 +262,9 @@ void tx_log_emit(TxLogLevel lvl, const char* file, int line,
 
 void tx_log_set_file_path(const char* path) {
     std::lock_guard<std::mutex> lock(g_log_mu);
-    g_file_path = (path && path[0]) ? path : "debugtraces.log";
+    std::string base_path = (path && path[0]) ? path : "debugtraces.log";
+    // Make file path process-unique to avoid multi-process file contention
+    g_file_path = make_process_unique_path(base_path);
     if (g_file_stream.is_open()) {
         g_file_stream.close();
     }
