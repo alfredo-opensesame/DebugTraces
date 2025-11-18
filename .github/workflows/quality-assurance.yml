@@ -18,10 +18,12 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build clang-15 clang-tidy-15 libgtest-dev
-        # Create symlinks for default clang-tidy command
+        sudo apt-get install -y cmake ninja-build gcc-12 g++-12 clang-15 clang-tidy-15
+        # Use GCC 12 for better C++20 compatibility and consistent stdlib
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
+        # Create symlinks for clang-tidy command
         sudo ln -sf /usr/bin/clang-tidy-15 /usr/bin/clang-tidy
-        sudo ln -sf /usr/bin/clang++-15 /usr/bin/clang++
         
     - name: Configure CMake
       run: cmake --preset clang-tidy
@@ -50,7 +52,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build gcc-12 g++-12 clang-15 libgtest-dev
+        sudo apt-get install -y cmake ninja-build gcc-12 g++-12
         # Use GCC 12 for better C++20 compatibility
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
         sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
@@ -89,7 +91,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build gcc-12 g++-12 libgtest-dev
+        sudo apt-get install -y cmake ninja-build gcc-12 g++-12
         # Use GCC 12 for better C++20 compatibility
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
         sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
@@ -137,7 +139,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build gcc-12 g++-12 clang-15 clang-tidy-15 libgtest-dev
+        sudo apt-get install -y cmake ninja-build gcc-12 g++-12 clang-15 clang-tidy-15
         # Use GCC 12 for better C++20 compatibility
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
         sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
