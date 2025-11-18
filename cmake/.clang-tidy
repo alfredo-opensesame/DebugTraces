@@ -87,6 +87,4 @@ HeaderFilterRegex: '.*'
 
 FormatStyle: 'file'
 
-SystemHeaders: false
-
 WarningsAsErrors: ''
