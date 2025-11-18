@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  quick-check:
+    name: Quick Quality Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build clang-15 clang-tidy-15 libgtest-dev
+        # Create symlinks for default clang-tidy command
+        sudo ln -sf /usr/bin/clang-tidy-15 /usr/bin/clang-tidy
+        
+    - name: Configure debug build
+      run: cmake --preset dev-debug
+      
+    - name: Build debug
+      run: cmake --build build/dev-debug
+      
+    - name: Run tests
+      run: |
+        cd build/dev-debug
+        ctest --output-on-failure --timeout 30
+        
+    - name: Quick static analysis
+      run: |
+        cmake --preset clang-tidy
+        cmake --build build/clang-tidy --target dbgtracing
+      continue-on-error: true  # Don't fail CI on warnings
+      
+    - name: Check compilation (Release)  
+      run: |
+        cmake --preset dev-release
+        cmake --build build/dev-release
+        
+  format-check:
+    name: Code Format Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install clang-format
+      run: sudo apt-get install -y clang-format-15
+      
+    - name: Check code formatting
+      run: |
+        find src tests -name '*.cpp' -o -name '*.h' | xargs clang-format-15 --dry-run --Werror
+      continue-on-error: true  # Don't fail CI on formatting issues

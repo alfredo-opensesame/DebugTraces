@@ -1,0 +1,169 @@
+name: Quality Assurance
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  static-analysis:
+    name: Static Analysis (Clang-Tidy)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build clang-15 clang-tidy-15 libgtest-dev
+        # Create symlinks for default clang-tidy command
+        sudo ln -sf /usr/bin/clang-tidy-15 /usr/bin/clang-tidy
+        sudo ln -sf /usr/bin/clang++-15 /usr/bin/clang++
+        
+    - name: Configure CMake
+      run: cmake --preset clang-tidy
+      
+    - name: Build with Clang-Tidy
+      run: cmake --build build/clang-tidy --target dbgtracing
+      
+    - name: Upload Clang-Tidy results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: clang-tidy-results
+        path: build/clang-tidy/
+
+  sanitizer-tests:
+    name: Sanitizer Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sanitizer: [asan, tsan, ubsan]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build clang-15 libgtest-dev
+        
+    - name: Configure CMake (${{ matrix.sanitizer }})
+      run: cmake --preset ${{ matrix.sanitizer }}
+      
+    - name: Build (${{ matrix.sanitizer }})
+      run: cmake --build build/${{ matrix.sanitizer }}
+      
+    - name: Run tests (${{ matrix.sanitizer }})
+      run: |
+        cd build/${{ matrix.sanitizer }}
+        ctest --output-on-failure --timeout 300
+        
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.sanitizer }}-test-results
+        path: build/${{ matrix.sanitizer }}/Testing/
+
+  cross-platform:
+    name: Cross-Platform Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        build-type: [Debug, Release]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build libgtest-dev
+        
+    - name: Install dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install cmake ninja googletest
+        
+    - name: Install dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        choco install cmake ninja
+        vcpkg install gtest:x64-windows
+        
+    - name: Configure CMake (Unix)
+      if: matrix.os != 'windows-latest'
+      run: |
+        if [ "${{ matrix.build-type }}" = "Debug" ]; then
+          cmake --preset dev-debug
+        else
+          cmake --preset dev-release
+        fi
+        
+    - name: Configure CMake (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        if ("${{ matrix.build-type }}" -eq "Debug") {
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+        } else {
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+        }
+        
+    - name: Build
+      run: |
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cmake --build build --config ${{ matrix.build-type }}
+        elif [ "${{ matrix.build-type }}" = "Debug" ]; then
+          cmake --build build/dev-debug
+        else
+          cmake --build build/dev-release
+        fi
+      shell: bash
+        
+    - name: Test (Debug builds only)
+      if: matrix.build-type == 'Debug'
+      run: |
+        if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          cd build && ctest -C Debug --output-on-failure
+        else
+          cd build/dev-debug && ctest --output-on-failure
+        fi
+      shell: bash
+
+  comprehensive-qa:
+    name: Comprehensive QA Suite
+    runs-on: ubuntu-latest
+    needs: [static-analysis, sanitizer-tests]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build clang-15 clang-tidy-15 libgtest-dev
+        # Create symlinks for default clang-tidy command
+        sudo ln -sf /usr/bin/clang-tidy-15 /usr/bin/clang-tidy
+        
+    - name: Run comprehensive quality checks
+      run: ./cmake/run-quality-checks.sh
+      
+    - name: Upload comprehensive results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: comprehensive-qa-results
+        path: |
+          build/*/
+          !build/*/CMakeFiles/
+          !build/*/*.o
+          !build/*/*.a

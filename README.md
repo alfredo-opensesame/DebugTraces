@@ -1,5 +1,9 @@
 # DebugTracing Library
 
+[![CI](https://github.com/alfredo-opensesame/DebugTraces/actions/workflows/ci.yml/badge.svg)](https://github.com/alfredo-opensesame/DebugTraces/actions/workflows/ci.yml)
+[![Quality Assurance](https://github.com/alfredo-opensesame/DebugTraces/actions/workflows/quality-assurance.yml/badge.svg)](https://github.com/alfredo-opensesame/DebugTraces/actions/workflows/quality-assurance.yml)
+[![Build and Test](https://github.com/alfredo-opensesame/DebugTraces/actions/workflows/build-test.yml/badge.svg)](https://github.com/alfredo-opensesame/DebugTraces/actions/workflows/build-test.yml)
+
 A portable, thread-safe C++20 logging library with compile-time optimization and runtime configuration.
 
 ## Project Structure
@@ -332,6 +336,16 @@ cmake --preset ubsan && cmake --build build/ubsan && ctest --preset ubsan
 
 ## Quality Assurance
 
+### GitHub Actions CI/CD
+
+Automated quality assurance runs on every commit and PR:
+
+**Workflows:**
+- 🔄 **CI**: Quick validation (build, test, static analysis)
+- 🔍 **Quality Assurance**: Comprehensive sanitizer and static analysis testing
+- 🏗️ **Build and Test**: Multi-platform, multi-compiler validation (Ubuntu/macOS, GCC/Clang)
+- 🚀 **Release**: Automated release builds with full QA validation
+
 ### Static Analysis & Sanitizers
 
 The project includes comprehensive quality assurance tools:
@@ -344,7 +358,7 @@ The project includes comprehensive quality assurance tools:
 
 **Quick Quality Check:**
 ```bash
-# Run all quality checks
+# Run all quality checks locally
 ./cmake/run-quality-checks.sh
 ```
 

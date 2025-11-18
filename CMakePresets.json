@@ -29,12 +29,23 @@
     },
     {
       "name": "dev-release",
-      "displayName": "Development Release",
-      "description": "Release build for development",
       "inherits": "base",
+      "displayName": "Development Release Build",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "DBGTR_WERROR": "OFF"
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "ci",
+      "inherits": "base",
+      "displayName": "Continuous Integration Build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_COMPILE_WARNING_AS_ERROR": "ON",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      },
+      "environment": {
+        "CTEST_OUTPUT_ON_FAILURE": "1"
       }
     },
     {

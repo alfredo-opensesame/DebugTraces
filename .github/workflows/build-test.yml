@@ -1,0 +1,86 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-test:
+    name: Build and Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        compiler: [gcc, clang]
+        build-type: [Debug, Release]
+        exclude:
+          # Skip GCC on macOS as it's actually Clang in disguise
+          - os: macos-latest
+            compiler: gcc
+            
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build libgtest-dev
+        if [ "${{ matrix.compiler }}" = "clang" ]; then
+          sudo apt-get install -y clang-15
+        fi
+        
+    - name: Install dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install cmake ninja googletest llvm
+        
+    - name: Set compiler environment
+      run: |
+        if [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          echo "CC=clang-15" >> $GITHUB_ENV
+          echo "CXX=clang++-15" >> $GITHUB_ENV
+        elif [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.os }}" = "macos-latest" ]; then
+          echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
+        fi
+        
+    - name: Configure CMake
+      run: |
+        if [ "${{ matrix.build-type }}" = "Debug" ]; then
+          cmake --preset dev-debug
+          BUILD_DIR="build/dev-debug"
+        else
+          cmake --preset dev-release  
+          BUILD_DIR="build/dev-release"
+        fi
+        echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
+        
+    - name: Build
+      run: cmake --build $BUILD_DIR
+      
+    - name: Test (Debug only - Release has logging disabled)
+      if: matrix.build-type == 'Debug'
+      run: |
+        cd $BUILD_DIR
+        ctest --output-on-failure --timeout 60
+        
+    - name: Test compilation (Release - verify no-op builds)
+      if: matrix.build-type == 'Release'
+      run: |
+        echo "Release build compiled successfully - logging disabled by design"
+        echo "Testing that key executables exist:"
+        ls -la $BUILD_DIR/dbgtracing_tests
+        
+    - name: Upload build artifacts
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-failure-${{ matrix.os }}-${{ matrix.compiler }}-${{ matrix.build-type }}
+        path: |
+          build/*/CMakeFiles/CMakeError.log
+          build/*/CMakeFiles/CMakeOutput.log
