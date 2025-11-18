@@ -24,9 +24,13 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y cmake ninja-build gcc-12 g++-12 clang-15 clang-tidy-15
+        # Remove any existing GCC 14 to avoid conflicts
+        sudo apt-get remove -y gcc-14 g++-14 2>/dev/null || true
         # Use GCC 12 for better C++20 compatibility
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
         sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
+        # Verify compiler version
+        gcc --version
         # Create symlinks for default clang-tidy command
         sudo ln -sf /usr/bin/clang-tidy-15 /usr/bin/clang-tidy
         
@@ -60,9 +64,13 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y cmake ninja-build gcc-12 g++-12
+        # Remove any existing GCC 14 to avoid conflicts
+        sudo apt-get remove -y gcc-14 g++-14 2>/dev/null || true
         # Use GCC 12 for better C++20 compatibility
         sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
         sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
+        # Verify compiler version
+        gcc --version
         
     - name: Install dependencies (macOS)
       if: matrix.os == 'macos-latest'

@@ -30,16 +30,24 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y cmake ninja-build gcc-12 g++-12
+        # Remove any existing GCC 14 to avoid conflicts
+        sudo apt-get remove -y gcc-14 g++-14 2>/dev/null || true
         if [ "${{ matrix.compiler }}" = "clang" ]; then
-          sudo apt-get install -y clang-15
-          # Use GCC 12 for alternative compiler setup
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
-        else
-          # Use GCC 12 for better C++20 compatibility
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
+          sudo apt-get install -y clang-15 libc++-15-dev libc++abi-15-dev
+          # Ensure clang++-15 exists (should be installed with clang-15)
+          if [ ! -f /usr/bin/clang++-15 ]; then
+            echo "Creating clang++-15 symlink"
+            sudo ln -sf /usr/bin/clang-15 /usr/bin/clang++-15
+          fi
+          # Verify installation
+          ls -la /usr/bin/clang*-15
         fi
+        # Always set up GCC 12 as system default with high priority
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
+        # Verify compiler version
+        gcc --version
+        g++ --version
         
     - name: Install dependencies (macOS)
       if: matrix.os == 'macos-latest'
@@ -49,15 +57,21 @@ jobs:
     - name: Set compiler environment
       run: |
         if [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          # Verify clang installation
+          clang-15 --version
+          clang++-15 --version
           echo "CC=clang-15" >> $GITHUB_ENV
           echo "CXX=clang++-15" >> $GITHUB_ENV
-          # Use libstdc++ for consistency with GoogleTest
+          # Use libc++ to avoid GCC libstdc++ compatibility issues
+          echo "CXXFLAGS=-stdlib=libc++" >> $GITHUB_ENV
+          echo "LDFLAGS=-stdlib=libc++ -lc++abi" >> $GITHUB_ENV
         elif [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.os }}" = "macos-latest" ]; then
           echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
           echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
-        elif [ "${{ matrix.compiler }}" = "gcc" ] && [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
-          echo "CC=gcc-12" >> $GITHUB_ENV
-          echo "CXX=g++-12" >> $GITHUB_ENV
+        elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          # Force GCC 12 usage for all Ubuntu builds
+          echo "CC=/usr/bin/gcc-12" >> $GITHUB_ENV
+          echo "CXX=/usr/bin/g++-12" >> $GITHUB_ENV
         fi
         
     - name: Configure CMake

@@ -72,10 +72,20 @@ if (DBGTR_CLANG_TIDY)
   endif()
   
   if (CLANG_TIDY_EXE)
+    # Check GCC version to avoid GCC 14 std::format template issues
+    execute_process(COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if (GCC_VERSION VERSION_GREATER_EQUAL "14.0")
+      message(WARNING "GCC ${GCC_VERSION} detected - Clang-Tidy may have template instantiation issues with std::format. Consider using GCC 12.")
+      # Add extra args to work around GCC 14 template issues
+      set(CLANG_TIDY_ARGS "${CLANG_TIDY_EXE};--config-file=${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-tidy;--format-style=file:${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-format;-header-filter=.*;--extra-arg-before=--driver-mode=g++;--extra-arg=-ftemplate-backtrace-limit=0")
+    else()
+      set(CLANG_TIDY_ARGS "${CLANG_TIDY_EXE};--config-file=${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-tidy;--format-style=file:${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-format;-header-filter=.*")
+    endif()
+    
     set_target_properties(${DBGTR_TARGET_NAME} PROPERTIES
-      CXX_CLANG_TIDY "${CLANG_TIDY_EXE};--config-file=${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-tidy;--format-style=file:${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-format;-header-filter=.*"
+      CXX_CLANG_TIDY "${CLANG_TIDY_ARGS}"
     )
-    message(STATUS "Clang-Tidy enabled: ${CLANG_TIDY_EXE}")
+    message(STATUS "Clang-Tidy enabled: ${CLANG_TIDY_EXE} (GCC version: ${GCC_VERSION})")
   else()
     message(WARNING "Clang-Tidy requested but not found")
   endif()
