@@ -354,4 +354,15 @@ void tx_log_flush() {
 
 } // extern "C"
 
+#ifdef __cplusplus
+// TxScopeTimer stub implementations for Release builds
+TxScopeTimer::TxScopeTimer(const char*, const char*, int, const char*) noexcept {
+    // No-op stub for Release builds
+}
+
+TxScopeTimer::~TxScopeTimer() noexcept {
+    // No-op stub for Release builds
+}
+#endif
+
 #endif // TX_TRACE_ENABLED

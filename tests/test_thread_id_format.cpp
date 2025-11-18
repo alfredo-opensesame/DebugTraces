@@ -7,6 +7,7 @@
 #include <fstream>
 #include <string>
 #include <regex>
+#include <filesystem>
 
 class ThreadIDFormatTest : public ::testing::Test {
 protected:
@@ -17,11 +18,40 @@ protected:
     }
 
     void TearDown() override {
+        tx_log_enable_file(false);
         std::remove(test_file_.c_str());
+        // Also clean up PID-suffixed files
+        cleanupLogFiles();
+    }
+    
+    void cleanupLogFiles() {
+        size_t dot_pos = test_file_.find_last_of('.');
+        std::string name_part = (dot_pos != std::string::npos) ? 
+                               test_file_.substr(0, dot_pos) : test_file_;
+        std::string pattern = name_part + "_pid";
+        
+        try {
+            for (const auto& entry : std::filesystem::directory_iterator(".")) {
+                if (entry.is_regular_file()) {
+                    std::string filename = entry.path().filename().string();
+                    if (filename.find(pattern) == 0) {
+                        std::filesystem::remove(entry.path());
+                    }
+                }
+            }
+        } catch (...) {
+            // Ignore cleanup errors
+        }
     }
 
     std::string readLogFile() {
-        std::ifstream file(test_file_);
+        // Find the actual log file created (has PID suffix)
+        std::string actual_file = findActualLogFile();
+        if (actual_file.empty()) {
+            return "";
+        }
+        
+        std::ifstream file(actual_file);
         if (!file.is_open()) {
             return "";
         }
@@ -30,6 +60,37 @@ protected:
         buffer << file.rdbuf();
         file.close();
         return buffer.str();
+    }
+    
+    std::string findActualLogFile() {
+        size_t dot_pos = test_file_.find_last_of('.');
+        std::string name_part, ext_part;
+        
+        if (dot_pos != std::string::npos) {
+            name_part = test_file_.substr(0, dot_pos);
+            ext_part = test_file_.substr(dot_pos);
+        } else {
+            name_part = test_file_;
+            ext_part = "";
+        }
+        
+        // Look for files matching the pattern: name_part_pidXXXX.ext
+        std::string pattern = name_part + "_pid";
+        
+        try {
+            for (const auto& entry : std::filesystem::directory_iterator(".")) {
+                if (entry.is_regular_file()) {
+                    std::string filename = entry.path().filename().string();
+                    if (filename.find(pattern) == 0 && filename.ends_with(ext_part)) {
+                        return filename;
+                    }
+                }
+            }
+        } catch (...) {
+            // Fallback: try the original filename
+        }
+        
+        return "";
     }
 
     std::string test_file_;
@@ -59,12 +120,12 @@ TEST_F(ThreadIDFormatTest, ThreadIDFormat) {
     // DBG should have thread ID but no level tag: [<ThreadID>] <filename>:<line>: <Message>
     EXPECT_TRUE(std::regex_search(log_content, std::regex(R"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \[[0-9a-fA-F]+\] .*Debug message for format test)")));
 #else
-    // With TRACE_THREAD_ID=0: Format should be [<Level>] for INFO/ERROR
-    EXPECT_TRUE(std::regex_search(log_content, std::regex(R"(\[INFO\] )")));
-    EXPECT_TRUE(std::regex_search(log_content, std::regex(R"(\[ERROR\] )")));
+    // With TRACE_THREAD_ID=0: Format should be [<Level>][PID:xxx] for INFO/ERROR
+    EXPECT_TRUE(std::regex_search(log_content, std::regex(R"(\[INFO\]\[PID:\d+\])")));
+    EXPECT_TRUE(std::regex_search(log_content, std::regex(R"(\[ERROR\]\[PID:\d+\])")));
     
-    // DBG should have no level tag or thread ID: <filename>:<line>: <Message>
-    EXPECT_TRUE(std::regex_search(log_content, std::regex(R"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} [^[]*Debug message for format test)")));
+    // DBG should have no level tag but should have PID: [PID:xxx] <filename>:<line>: <Message>
+    EXPECT_TRUE(std::regex_search(log_content, std::regex(R"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \[PID:\d+\] [^[]*Debug message for format test)")));
     
     // Should NOT contain thread ID patterns
     EXPECT_FALSE(std::regex_search(log_content, std::regex(R"(\[[0-9a-fA-F]+\])")));

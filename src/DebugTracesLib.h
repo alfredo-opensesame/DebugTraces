@@ -137,9 +137,7 @@ void tx_log_flush();
 }
 #endif
 
-#ifdef __cplusplus
-struct TxScopeTimer { TxScopeTimer(const char*, const char*, int, const char*) noexcept {} };
-#endif
+
 
 #define LOGF(...)   do{}while(0)
 #define LOGE(...)   do{}while(0)
@@ -153,6 +151,14 @@ struct TxScopeTimer { TxScopeTimer(const char*, const char*, int, const char*) n
 #define DISABLE_THREAD_ID_TRACING() do{}while(0)
 
 inline void tx_log_to_file_helper(const char* filename = nullptr) { (void)filename; }
+
+// Stub TxScopeTimer for disabled tracing
+#ifdef __cplusplus
+struct TxScopeTimer {
+    TxScopeTimer(const char*, const char*, int, const char*) noexcept;
+    ~TxScopeTimer() noexcept;
+};
+#endif
 
 // Expose API as no-ops
 

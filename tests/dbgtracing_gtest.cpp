@@ -41,12 +41,53 @@ protected:
 
     std::string readLogFile() {
         tx_log_flush();
-        std::ifstream file(test_file_);
+        
+        // The logger adds PID suffix to make files process-unique
+        // Find the actual file that was created
+        std::string actual_file = findActualLogFile();
+        if (actual_file.empty()) {
+            return "";
+        }
+        
+        std::ifstream file(actual_file);
         if (!file.is_open()) return "";
         
         std::stringstream buffer;
         buffer << file.rdbuf();
         return buffer.str();
+    }
+    
+    std::string findActualLogFile() {
+        // The logger creates files with PID suffix: basename_pidXXXX.ext
+        std::string base_name = test_file_;
+        size_t dot_pos = base_name.find_last_of('.');
+        std::string name_part, ext_part;
+        
+        if (dot_pos != std::string::npos) {
+            name_part = base_name.substr(0, dot_pos);
+            ext_part = base_name.substr(dot_pos);
+        } else {
+            name_part = base_name;
+            ext_part = "";
+        }
+        
+        // Look for files matching the pattern: name_part_pidXXXX.ext
+        std::string pattern = name_part + "_pid";
+        
+        try {
+            for (const auto& entry : std::filesystem::directory_iterator(".")) {
+                if (entry.is_regular_file()) {
+                    std::string filename = entry.path().filename().string();
+                    if (filename.find(pattern) == 0 && filename.ends_with(ext_part)) {
+                        return filename;
+                    }
+                }
+            }
+        } catch (...) {
+            // Fallback: try the original filename
+        }
+        
+        return "";
     }
 
     std::string test_file_;
@@ -90,6 +131,38 @@ TEST_F(MinimalDebugTracesTest, RAIITimer) {
 }
 
 // Test file path setting
+// Helper function to find PID-suffixed log files
+static std::string findPidSuffixedLogFile(const std::string& base_name) {
+    size_t dot_pos = base_name.find_last_of('.');
+    std::string name_part, ext_part;
+    
+    if (dot_pos != std::string::npos) {
+        name_part = base_name.substr(0, dot_pos);
+        ext_part = base_name.substr(dot_pos);
+    } else {
+        name_part = base_name;
+        ext_part = "";
+    }
+    
+    // Look for files matching the pattern: name_part_pidXXXX.ext
+    std::string pattern = name_part + "_pid";
+    
+    try {
+        for (const auto& entry : std::filesystem::directory_iterator(".")) {
+            if (entry.is_regular_file()) {
+                std::string filename = entry.path().filename().string();
+                if (filename.find(pattern) == 0 && filename.ends_with(ext_part)) {
+                    return filename;
+                }
+            }
+        }
+    } catch (...) {
+        // Fallback: try the original filename
+    }
+    
+    return "";
+}
+
 TEST_F(MinimalDebugTracesTest, FilePathSetting) {
     std::string custom_file = "custom_debug.log";
     std::filesystem::remove(custom_file);
@@ -98,14 +171,20 @@ TEST_F(MinimalDebugTracesTest, FilePathSetting) {
     LOGI("Message in custom file");
     
     tx_log_flush();
-    EXPECT_TRUE(std::filesystem::exists(custom_file));
     
-    std::ifstream file(custom_file);
+    // Logger adds PID suffix, so find the actual file
+    std::string actual_file = findPidSuffixedLogFile(custom_file);
+    EXPECT_FALSE(actual_file.empty()) << "Custom log file should be created with PID suffix";
+    
+    std::ifstream file(actual_file);
     std::string content((std::istreambuf_iterator<char>(file)),
                        std::istreambuf_iterator<char>());
     EXPECT_TRUE(content.find("Message in custom file") != std::string::npos);
     
     std::filesystem::remove(custom_file);
+    if (!actual_file.empty()) {
+        std::filesystem::remove(actual_file);
+    }
 }
 
 // Test default file name
@@ -116,9 +195,15 @@ TEST_F(MinimalDebugTracesTest, DefaultFileName) {
     LOGI("Default file message");
     
     tx_log_flush();
-    EXPECT_TRUE(std::filesystem::exists("debugtraces.log"));
+    
+    // Logger adds PID suffix, so find the actual file
+    std::string actual_file = findPidSuffixedLogFile("debugtraces.log");
+    EXPECT_FALSE(actual_file.empty()) << "Default log file should be created with PID suffix";
     
     std::filesystem::remove("debugtraces.log");
+    if (!actual_file.empty()) {
+        std::filesystem::remove(actual_file);
+    }
 }
 
 // Test file logging enable/disable
@@ -362,9 +447,9 @@ TEST_F(MinimalDebugTracesTest, DebugLevelFormat) {
     EXPECT_TRUE(log_content.find("[DEBUG]") == std::string::npos);
     EXPECT_TRUE(log_content.find("This is a debug message") != std::string::npos);
     
-    // Should have proper format: <DateTime> <filename>:<line>: <Message>
+    // Should have proper format: <DateTime> [PID:xxx] <filename>:<line>: <Message>
     EXPECT_TRUE(std::regex_search(log_content, 
-        std::regex(R"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} dbgtracing_gtest\.cpp:\d+: This is a debug message)")));
+        std::regex(R"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} \[PID:\d+\] dbgtracing_gtest\.cpp:\d+: This is a debug message)")));
 }
 
 int main(int argc, char **argv) {

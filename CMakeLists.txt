@@ -11,6 +11,10 @@ option(DBGTR_BUILD_TESTS "Build Debug Tracing tests"     ON)
 option(DBGTR_INSTALL     "Install Debug Tracing targets" ON)
 option(DBGTR_WARNINGS    "Enable extra warnings"         ON)
 option(DBGTR_WERROR      "Treat warnings as errors"      OFF)
+option(DBGTR_CLANG_TIDY  "Enable Clang-Tidy static analysis" OFF)
+option(DBGTR_ASAN        "Enable AddressSanitizer"       OFF)
+option(DBGTR_TSAN        "Enable ThreadSanitizer"        OFF)
+option(DBGTR_UBSAN       "Enable UndefinedBehaviorSanitizer" OFF)
 
 # If DBGTX::dbgtracing already exists (e.g., provided upstream), skip local definition
 if (TARGET ${DBGTR_TARGET_ALIAS})
@@ -56,6 +60,58 @@ if (DBGTR_WARNINGS)
       target_compile_options(${DBGTR_TARGET_NAME} PRIVATE -Werror)
     endif()
   endif()
+endif()
+
+# ----- Static Analysis & Sanitizers -----
+
+# Clang-Tidy setup
+if (DBGTR_CLANG_TIDY)
+  find_program(CLANG_TIDY_EXE NAMES "clang-tidy" PATHS "/opt/homebrew/opt/llvm/bin" NO_DEFAULT_PATH)
+  if (NOT CLANG_TIDY_EXE)
+    find_program(CLANG_TIDY_EXE NAMES "clang-tidy")
+  endif()
+  
+  if (CLANG_TIDY_EXE)
+    set_target_properties(${DBGTR_TARGET_NAME} PROPERTIES
+      CXX_CLANG_TIDY "${CLANG_TIDY_EXE};--config-file=${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-tidy;-header-filter=.*"
+    )
+    message(STATUS "Clang-Tidy enabled: ${CLANG_TIDY_EXE}")
+  else()
+    message(WARNING "Clang-Tidy requested but not found")
+  endif()
+endif()
+
+# Sanitizer support (mutually exclusive - choose one)
+set(SANITIZER_COMPILE_FLAGS "")
+set(SANITIZER_LINK_FLAGS "")
+
+if (DBGTR_ASAN)
+  if (DBGTR_TSAN OR DBGTR_UBSAN)
+    message(FATAL_ERROR "Cannot enable multiple sanitizers simultaneously")
+  endif()
+  set(SANITIZER_COMPILE_FLAGS "-fsanitize=address;-fno-omit-frame-pointer;-g")
+  set(SANITIZER_LINK_FLAGS "-fsanitize=address")
+  message(STATUS "AddressSanitizer enabled")
+elseif (DBGTR_TSAN)
+  if (DBGTR_ASAN OR DBGTR_UBSAN)
+    message(FATAL_ERROR "Cannot enable multiple sanitizers simultaneously")
+  endif()
+  set(SANITIZER_COMPILE_FLAGS "-fsanitize=thread;-fno-omit-frame-pointer;-g")
+  set(SANITIZER_LINK_FLAGS "-fsanitize=thread")
+  message(STATUS "ThreadSanitizer enabled")
+elseif (DBGTR_UBSAN)
+  if (DBGTR_ASAN OR DBGTR_TSAN)
+    message(FATAL_ERROR "Cannot enable multiple sanitizers simultaneously")
+  endif()
+  set(SANITIZER_COMPILE_FLAGS "-fsanitize=undefined;-fno-omit-frame-pointer;-g")
+  set(SANITIZER_LINK_FLAGS "-fsanitize=undefined")
+  message(STATUS "UndefinedBehaviorSanitizer enabled")
+endif()
+
+# Apply sanitizer flags to main library
+if (SANITIZER_COMPILE_FLAGS AND NOT MSVC)
+  target_compile_options(${DBGTR_TARGET_NAME} PRIVATE ${SANITIZER_COMPILE_FLAGS})
+  target_link_options(${DBGTR_TARGET_NAME} PRIVATE ${SANITIZER_LINK_FLAGS})
 endif()
 
 # Namespaced alias for consumers
@@ -143,6 +199,19 @@ if (DBGTR_BUILD_TESTS)
       target_link_libraries(${DBGTR_TARGET_NAME}_tests PRIVATE rt)
     endif()
     
+    # Apply sanitizers to tests
+    if (SANITIZER_COMPILE_FLAGS AND NOT MSVC)
+      target_compile_options(${DBGTR_TARGET_NAME}_tests PRIVATE ${SANITIZER_COMPILE_FLAGS})
+      target_link_options(${DBGTR_TARGET_NAME}_tests PRIVATE ${SANITIZER_LINK_FLAGS})
+    endif()
+    
+    # Apply Clang-Tidy to tests
+    if (DBGTR_CLANG_TIDY AND CLANG_TIDY_EXE)
+      set_target_properties(${DBGTR_TARGET_NAME}_tests PROPERTIES
+        CXX_CLANG_TIDY "${CLANG_TIDY_EXE};--config-file=${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-tidy;-header-filter=.*"
+      )
+    endif()
+    
     # Compiler-specific flags for robust testing
     if(MSVC)
       target_compile_options(${DBGTR_TARGET_NAME}_tests PRIVATE /W4)
@@ -172,3 +241,66 @@ if (DBGTR_BUILD_TESTS)
     message(STATUS "GTest not found; ${DBGTR_TARGET_NAME} tests will not be built")
   endif()
 endif()
+
+# ----- Custom Targets for Static Analysis & Sanitizers -----
+
+# Clang-Tidy target (run manually)
+find_program(MANUAL_CLANG_TIDY_EXE NAMES "clang-tidy" PATHS "/opt/homebrew/opt/llvm/bin" NO_DEFAULT_PATH)
+if (NOT MANUAL_CLANG_TIDY_EXE)
+  find_program(MANUAL_CLANG_TIDY_EXE NAMES "clang-tidy")
+endif()
+
+if (MANUAL_CLANG_TIDY_EXE)
+  add_custom_target(clang-tidy
+    COMMAND ${MANUAL_CLANG_TIDY_EXE}
+      --config-file=${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-tidy
+      -header-filter=.*
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
+      --
+      -std=c++20
+      -I${CMAKE_CURRENT_SOURCE_DIR}/src
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Running Clang-Tidy static analysis"
+    VERBATIM
+  )
+endif()
+
+# ASAN test target
+add_custom_target(test-asan
+  COMMAND ${CMAKE_COMMAND} -DDBGTR_ASAN=ON -DCMAKE_BUILD_TYPE=Debug -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR}/asan
+  COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/asan
+  COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}/asan --output-on-failure
+  COMMENT "Building and running tests with AddressSanitizer"
+  VERBATIM
+)
+
+# TSAN test target
+add_custom_target(test-tsan
+  COMMAND ${CMAKE_COMMAND} -DDBGTR_TSAN=ON -DCMAKE_BUILD_TYPE=Debug -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR}/tsan
+  COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/tsan
+  COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}/tsan --output-on-failure
+  COMMENT "Building and running tests with ThreadSanitizer"
+  VERBATIM
+)
+
+# UBSAN test target
+add_custom_target(test-ubsan
+  COMMAND ${CMAKE_COMMAND} -DDBGTR_UBSAN=ON -DCMAKE_BUILD_TYPE=Debug -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR}/ubsan
+  COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/ubsan
+  COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}/ubsan --output-on-failure
+  COMMENT "Building and running tests with UndefinedBehaviorSanitizer"
+  VERBATIM
+)
+
+# Combined static analysis target
+add_custom_target(analyze
+  DEPENDS clang-tidy
+  COMMENT "Running all static analysis tools"
+)
+
+# All sanitizers target (runs them sequentially)
+add_custom_target(test-all-sanitizers
+  DEPENDS test-asan test-tsan test-ubsan
+  COMMENT "Running tests with all sanitizers"
+)

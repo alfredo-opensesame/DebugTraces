@@ -317,6 +317,79 @@ ctest --output-on-failure
 ./dbgtracing_tests
 ```
 
+### Using CMake Presets
+```bash
+# Development builds
+cmake --preset dev-debug && cmake --build build/dev-debug
+cmake --preset dev-release && cmake --build build/dev-release
+
+# Static analysis and sanitizer builds
+cmake --preset clang-tidy && cmake --build build/clang-tidy
+cmake --preset asan && cmake --build build/asan && ctest --preset asan
+cmake --preset tsan && cmake --build build/tsan && ctest --preset tsan
+cmake --preset ubsan && cmake --build build/ubsan && ctest --preset ubsan
+```
+
+## Quality Assurance
+
+### Static Analysis & Sanitizers
+
+The project includes comprehensive quality assurance tools:
+
+**Available Options:**
+- `DBGTR_CLANG_TIDY=ON` - Enable Clang-Tidy static analysis
+- `DBGTR_ASAN=ON` - Enable AddressSanitizer (memory errors)
+- `DBGTR_TSAN=ON` - Enable ThreadSanitizer (thread safety)
+- `DBGTR_UBSAN=ON` - Enable UndefinedBehaviorSanitizer
+
+**Quick Quality Check:**
+```bash
+# Run all quality checks
+./cmake/run-quality-checks.sh
+```
+
+**Individual Analysis:**
+```bash
+# Static analysis with Clang-Tidy
+cmake --preset clang-tidy
+cmake --build build/clang-tidy
+
+# Memory error detection
+cmake --preset asan
+cmake --build build/asan
+ctest --preset asan
+
+# Thread safety analysis  
+cmake --preset tsan
+cmake --build build/tsan
+ctest --preset tsan
+
+# Undefined behavior detection
+cmake --preset ubsan
+cmake --build build/ubsan
+ctest --preset ubsan
+```
+
+**Custom Targets:**
+```bash
+# Manual Clang-Tidy run
+make clang-tidy
+
+# All sanitizer tests
+make test-all-sanitizers
+
+# Individual sanitizer tests
+make test-asan
+make test-tsan  
+make test-ubsan
+```
+
+**Configuration:** The `.clang-tidy` file provides comprehensive static analysis rules focusing on:
+- Memory safety and performance
+- Modern C++20 best practices
+- Thread safety and concurrency
+- Code maintainability and readability
+
 ## Usage Examples
 
 ### Real-time Audio Thread

@@ -6,20 +6,71 @@
 #include "../src/DebugTracesLib.h"
 #include <fstream>
 #include <string>
+#include <filesystem>
 
 class ThreadFormatTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Clean up any existing test log file
-        std::remove("thread_test.log");
-        
-        // Enable file logging for this test
+        // Initialize tracing with file output
         LOG_TO_FILE("thread_test.log");
     }
-    
+
     void TearDown() override {
         // Clean up test log file after test
         std::remove("thread_test.log");
+        // Also clean up PID-suffixed files
+        cleanupLogFiles("thread_test.log");
+    }
+    
+    std::string findActualLogFile(const std::string& base_name) {
+        size_t dot_pos = base_name.find_last_of('.');
+        std::string name_part, ext_part;
+        
+        if (dot_pos != std::string::npos) {
+            name_part = base_name.substr(0, dot_pos);
+            ext_part = base_name.substr(dot_pos);
+        } else {
+            name_part = base_name;
+            ext_part = "";
+        }
+        
+        // Look for files matching the pattern: name_part_pidXXXX.ext
+        std::string pattern = name_part + "_pid";
+        
+        try {
+            for (const auto& entry : std::filesystem::directory_iterator(".")) {
+                if (entry.is_regular_file()) {
+                    std::string filename = entry.path().filename().string();
+                    if (filename.find(pattern) == 0 && filename.ends_with(ext_part)) {
+                        return filename;
+                    }
+                }
+            }
+        } catch (...) {
+            // Fallback: try the original filename
+        }
+        
+        return "";
+    }
+    
+    void cleanupLogFiles(const std::string& base_name) {
+        size_t dot_pos = base_name.find_last_of('.');
+        std::string name_part = (dot_pos != std::string::npos) ? 
+                               base_name.substr(0, dot_pos) : base_name;
+        std::string pattern = name_part + "_pid";
+        
+        try {
+            for (const auto& entry : std::filesystem::directory_iterator(".")) {
+                if (entry.is_regular_file()) {
+                    std::string filename = entry.path().filename().string();
+                    if (filename.find(pattern) == 0) {
+                        std::filesystem::remove(entry.path());
+                    }
+                }
+            }
+        } catch (...) {
+            // Ignore cleanup errors
+        }
     }
 };
 
@@ -29,8 +80,11 @@ TEST_F(ThreadFormatTest, ThreadIDInLogMessages) {
     LOGD("This is a DEBUG message with thread ID");
     LOGE("This is an ERROR message with thread ID");
     
-    // Verify the log file was created and contains thread information
-    std::ifstream logFile("thread_test.log");
+    // Find the actual log file created (has PID suffix)
+    std::string actual_log_file = findActualLogFile("thread_test.log");
+    ASSERT_FALSE(actual_log_file.empty()) << "Log file should be created";
+    
+    std::ifstream logFile(actual_log_file);
     ASSERT_TRUE(logFile.is_open()) << "Log file should be created";
     
     std::string line;
@@ -61,8 +115,11 @@ TEST_F(ThreadFormatTest, MultipleLogLevels) {
     LOGE("ERROR level message");
     LOGW("WARNING level message");
     
-    // Verify log file has content
-    std::ifstream logFile("thread_test.log");
+    // Find the actual log file created (has PID suffix)
+    std::string actual_log_file = findActualLogFile("thread_test.log");
+    ASSERT_FALSE(actual_log_file.empty()) << "Log file should be created";
+    
+    std::ifstream logFile(actual_log_file);
     ASSERT_TRUE(logFile.is_open());
     
     std::string content((std::istreambuf_iterator<char>(logFile)),
