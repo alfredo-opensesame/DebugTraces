@@ -68,6 +68,9 @@ jobs:
         elif [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.os }}" = "macos-latest" ]; then
           echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
           echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
+          # Use libc++ on macOS to match Homebrew GoogleTest
+          echo "CXXFLAGS=-stdlib=libc++" >> $GITHUB_ENV
+          echo "LDFLAGS=-stdlib=libc++" >> $GITHUB_ENV
         elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
           # Force GCC 12 usage for all Ubuntu builds
           echo "CC=/usr/bin/gcc-12" >> $GITHUB_ENV

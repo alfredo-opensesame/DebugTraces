@@ -31,7 +31,6 @@ jobs:
         # Force environment variables for consistency
         export CC=/usr/bin/gcc-12
         export CXX=/usr/bin/g++-12
-        export CXXFLAGS="-stdlib=libstdc++"
         # Create symlinks for clang-tidy command
         sudo ln -sf /usr/bin/clang-tidy-15 /usr/bin/clang-tidy
         # Verify compiler version and standard library
@@ -44,14 +43,12 @@ jobs:
       run: |
         export CC=/usr/bin/gcc-12
         export CXX=/usr/bin/g++-12
-        export CXXFLAGS="-stdlib=libstdc++"
         cmake --preset clang-tidy
       
     - name: Build with Clang-Tidy
       run: |
         export CC=/usr/bin/gcc-12
         export CXX=/usr/bin/g++-12
-        export CXXFLAGS="-stdlib=libstdc++"
         cmake --build build/clang-tidy --target dbgtracing
       
     - name: Upload Clang-Tidy results
