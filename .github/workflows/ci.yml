@@ -46,8 +46,10 @@ jobs:
         
     - name: Quick static analysis
       run: |
-        cmake --preset clang-tidy
-        cmake --build build/clang-tidy --target dbgtracing
+        echo "Temporarily disabled due to GCC 14 template instantiation issues"
+        echo "Will re-enable once GCC 12 enforcement is working properly"
+        # cmake --preset clang-tidy
+        # cmake --build build/clang-tidy --target dbgtracing
       continue-on-error: true  # Don't fail CI on warnings
       
     - name: Check compilation (Release)  

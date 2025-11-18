@@ -52,7 +52,9 @@ jobs:
     - name: Install dependencies (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install cmake ninja googletest llvm
+        brew install cmake ninja llvm
+        # Don't install googletest from Homebrew to avoid stdlib conflicts
+        # Will use FetchContent instead for consistent libc++ usage
         
     - name: Set compiler environment
       run: |
@@ -79,6 +81,14 @@ jobs:
         
     - name: Configure CMake
       run: |
+        # Ensure environment variables are available for CMake
+        if [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.os }}" = "macos-latest" ]; then
+          export CC="$(brew --prefix llvm)/bin/clang"
+          export CXX="$(brew --prefix llvm)/bin/clang++"
+          export CXXFLAGS="-stdlib=libc++"
+          export LDFLAGS="-stdlib=libc++"
+        fi
+        
         if [ "${{ matrix.build-type }}" = "Debug" ]; then
           cmake --preset dev-debug
           BUILD_DIR="build/dev-debug"
@@ -89,7 +99,15 @@ jobs:
         echo "BUILD_DIR=$BUILD_DIR" >> $GITHUB_ENV
         
     - name: Build
-      run: cmake --build $BUILD_DIR
+      run: |
+        # Ensure environment variables are available for build
+        if [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.os }}" = "macos-latest" ]; then
+          export CC="$(brew --prefix llvm)/bin/clang"
+          export CXX="$(brew --prefix llvm)/bin/clang++"
+          export CXXFLAGS="-stdlib=libc++"
+          export LDFLAGS="-stdlib=libc++"
+        fi
+        cmake --build $BUILD_DIR
       
     - name: Test (Debug only - Release has logging disabled)
       if: matrix.build-type == 'Debug'
