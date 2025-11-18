@@ -52,9 +52,10 @@ jobs:
     - name: Install dependencies (macOS)
       if: matrix.os == 'macos-latest'
       run: |
-        brew install cmake ninja llvm
+        brew install cmake ninja
         # Don't install googletest from Homebrew to avoid stdlib conflicts
-        # Will use FetchContent instead for consistent libc++ usage
+        # Don't install llvm - using system clang for better compatibility
+        # Will use FetchContent GoogleTest for consistent libc++ usage
         
     - name: Set compiler environment
       run: |
@@ -68,9 +69,10 @@ jobs:
           echo "CXXFLAGS=-stdlib=libc++" >> $GITHUB_ENV
           echo "LDFLAGS=-stdlib=libc++ -lc++abi" >> $GITHUB_ENV
         elif [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.os }}" = "macos-latest" ]; then
-          echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
-          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
-          # Use libc++ on macOS to match Homebrew GoogleTest
+          # Use system clang instead of Homebrew LLVM for better compatibility
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "CXX=clang++" >> $GITHUB_ENV
+          # System clang uses libc++ by default on macOS, but be explicit
           echo "CXXFLAGS=-stdlib=libc++" >> $GITHUB_ENV
           echo "LDFLAGS=-stdlib=libc++" >> $GITHUB_ENV
         elif [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
@@ -83,8 +85,8 @@ jobs:
       run: |
         # Ensure environment variables are available for CMake
         if [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.os }}" = "macos-latest" ]; then
-          export CC="$(brew --prefix llvm)/bin/clang"
-          export CXX="$(brew --prefix llvm)/bin/clang++"
+          export CC=clang
+          export CXX=clang++
           export CXXFLAGS="-stdlib=libc++"
           export LDFLAGS="-stdlib=libc++"
         fi
@@ -102,8 +104,8 @@ jobs:
       run: |
         # Ensure environment variables are available for build
         if [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.os }}" = "macos-latest" ]; then
-          export CC="$(brew --prefix llvm)/bin/clang"
-          export CXX="$(brew --prefix llvm)/bin/clang++"
+          export CC=clang
+          export CXX=clang++
           export CXXFLAGS="-stdlib=libc++"
           export LDFLAGS="-stdlib=libc++"
         fi
