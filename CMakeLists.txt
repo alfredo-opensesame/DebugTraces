@@ -7,13 +7,13 @@ set(DBGTR_TARGET_NAMESPACE DBGTX::)
 set(DBGTR_TARGET_ALIAS     "${DBGTR_TARGET_NAMESPACE}${DBGTR_TARGET_NAME}")
 
 # Options
-option(DBGTR_BUILD_TESTS "Build Debug Tracing tests"     ON)
-option(DBGTR_INSTALL     "Install Debug Tracing targets" ON)
-option(DBGTR_WARNINGS    "Enable extra warnings"         ON)
-option(DBGTR_WERROR      "Treat warnings as errors"      OFF)
+option(DBGTR_BUILD_TESTS "Build Debug Tracing tests"         ON)
+option(DBGTR_INSTALL     "Install Debug Tracing targets"     ON)
+option(DBGTR_WARNINGS    "Enable extra warnings"             ON)
+option(DBGTR_WERROR      "Treat warnings as errors"          OFF)
 option(DBGTR_CLANG_TIDY  "Enable Clang-Tidy static analysis" OFF)
-option(DBGTR_ASAN        "Enable AddressSanitizer"       OFF)
-option(DBGTR_TSAN        "Enable ThreadSanitizer"        OFF)
+option(DBGTR_ASAN        "Enable AddressSanitizer"           OFF)
+option(DBGTR_TSAN        "Enable ThreadSanitizer"            OFF)
 option(DBGTR_UBSAN       "Enable UndefinedBehaviorSanitizer" OFF)
 
 # If DBGTX::dbgtracing already exists (e.g., provided upstream), skip local definition
@@ -73,7 +73,7 @@ if (DBGTR_CLANG_TIDY)
   
   if (CLANG_TIDY_EXE)
     set_target_properties(${DBGTR_TARGET_NAME} PROPERTIES
-      CXX_CLANG_TIDY "${CLANG_TIDY_EXE};--config-file=${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-tidy;-header-filter=.*"
+      CXX_CLANG_TIDY "${CLANG_TIDY_EXE};--config-file=${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-tidy;--format-style=file:${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-format;-header-filter=.*"
     )
     message(STATUS "Clang-Tidy enabled: ${CLANG_TIDY_EXE}")
   else()
@@ -208,7 +208,7 @@ if (DBGTR_BUILD_TESTS)
     # Apply Clang-Tidy to tests
     if (DBGTR_CLANG_TIDY AND CLANG_TIDY_EXE)
       set_target_properties(${DBGTR_TARGET_NAME}_tests PROPERTIES
-        CXX_CLANG_TIDY "${CLANG_TIDY_EXE};--config-file=${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-tidy;-header-filter=.*"
+        CXX_CLANG_TIDY "${CLANG_TIDY_EXE};--config-file=${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-tidy;--format-style=file:${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-format;-header-filter=.*"
       )
     endif()
     

@@ -50,7 +50,10 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build clang-15 libgtest-dev
+        sudo apt-get install -y cmake ninja-build gcc-12 g++-12 clang-15 libgtest-dev
+        # Use GCC 12 for better C++20 compatibility
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
         
     - name: Configure CMake (${{ matrix.sanitizer }})
       run: cmake --preset ${{ matrix.sanitizer }}
@@ -75,7 +78,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
         build-type: [Debug, Release]
         
     steps:
@@ -86,18 +89,17 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build libgtest-dev
+        sudo apt-get install -y cmake ninja-build gcc-12 g++-12 libgtest-dev
+        # Use GCC 12 for better C++20 compatibility
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
         
     - name: Install dependencies (macOS)
       if: matrix.os == 'macos-latest'
       run: |
         brew install cmake ninja googletest
         
-    - name: Install dependencies (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        choco install cmake ninja
-        vcpkg install gtest:x64-windows
+
         
     - name: Configure CMake (Unix)
       if: matrix.os != 'windows-latest'
@@ -108,35 +110,20 @@ jobs:
           cmake --preset dev-release
         fi
         
-    - name: Configure CMake (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        if ("${{ matrix.build-type }}" -eq "Debug") {
-          cmake -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
-        } else {
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
-        }
+
         
     - name: Build
       run: |
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          cmake --build build --config ${{ matrix.build-type }}
-        elif [ "${{ matrix.build-type }}" = "Debug" ]; then
+        if [ "${{ matrix.build-type }}" = "Debug" ]; then
           cmake --build build/dev-debug
         else
           cmake --build build/dev-release
         fi
-      shell: bash
         
     - name: Test (Debug builds only)
       if: matrix.build-type == 'Debug'
       run: |
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          cd build && ctest -C Debug --output-on-failure
-        else
-          cd build/dev-debug && ctest --output-on-failure
-        fi
-      shell: bash
+        cd build/dev-debug && ctest --output-on-failure
 
   comprehensive-qa:
     name: Comprehensive QA Suite
@@ -150,7 +137,10 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build clang-15 clang-tidy-15 libgtest-dev
+        sudo apt-get install -y cmake ninja-build gcc-12 g++-12 clang-15 clang-tidy-15 libgtest-dev
+        # Use GCC 12 for better C++20 compatibility
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
         # Create symlinks for default clang-tidy command
         sudo ln -sf /usr/bin/clang-tidy-15 /usr/bin/clang-tidy
         

@@ -23,7 +23,12 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build clang-15 clang-tidy-15 libgtest-dev
+        sudo apt-get install -y cmake ninja-build gcc-12 g++-12 clang-15 clang-tidy-15 libgtest-dev
+        # Use GCC 12 for better C++20 compatibility
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
+        # Create symlinks for default clang-tidy command
+        sudo ln -sf /usr/bin/clang-tidy-15 /usr/bin/clang-tidy
         
     - name: Run full quality assurance suite
       run: ./cmake/run-quality-checks.sh
@@ -54,7 +59,10 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y cmake ninja-build libgtest-dev
+        sudo apt-get install -y cmake ninja-build gcc-12 g++-12 libgtest-dev
+        # Use GCC 12 for better C++20 compatibility
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-12 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-12 100
         
     - name: Install dependencies (macOS)
       if: matrix.os == 'macos-latest'

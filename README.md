@@ -398,11 +398,12 @@ make test-tsan
 make test-ubsan
 ```
 
-**Configuration:** The `.clang-tidy` file provides comprehensive static analysis rules focusing on:
+**Configuration:** The `cmake/.clang-tidy` and `cmake/.clang-format` files provide comprehensive code quality rules focusing on:
 - Memory safety and performance
-- Modern C++20 best practices
+- Modern C++20 best practices  
 - Thread safety and concurrency
 - Code maintainability and readability
+- Consistent code formatting and style
 
 ## Usage Examples
 

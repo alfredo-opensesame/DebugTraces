@@ -31,7 +31,9 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y cmake ninja-build libgtest-dev
         if [ "${{ matrix.compiler }}" = "clang" ]; then
-          sudo apt-get install -y clang-15
+          sudo apt-get install -y clang-15 libc++-15-dev libc++abi-15-dev
+        else
+          sudo apt-get install -y gcc-12 g++-12
         fi
         
     - name: Install dependencies (macOS)
@@ -44,9 +46,13 @@ jobs:
         if [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
           echo "CC=clang-15" >> $GITHUB_ENV
           echo "CXX=clang++-15" >> $GITHUB_ENV
+          echo "CXXFLAGS=-stdlib=libc++" >> $GITHUB_ENV
         elif [ "${{ matrix.compiler }}" = "clang" ] && [ "${{ matrix.os }}" = "macos-latest" ]; then
           echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
           echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
+        elif [ "${{ matrix.compiler }}" = "gcc" ] && [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          echo "CC=gcc-12" >> $GITHUB_ENV
+          echo "CXX=g++-12" >> $GITHUB_ENV
         fi
         
     - name: Configure CMake
