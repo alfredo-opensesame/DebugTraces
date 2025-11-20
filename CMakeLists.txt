@@ -15,6 +15,18 @@ option(DBGTR_CLANG_TIDY  "Enable Clang-Tidy static analysis" OFF)
 option(DBGTR_ASAN        "Enable AddressSanitizer"           OFF)
 option(DBGTR_TSAN        "Enable ThreadSanitizer"            OFF)
 option(DBGTR_UBSAN       "Enable UndefinedBehaviorSanitizer" OFF)
+option(DBGTR_BUILD_ANALYSIS "Build analysis targets"         ON)
+
+# Detect if we're being used as a submodule
+if(NOT CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
+    set(DBGTR_IS_SUBMODULE TRUE)
+    # When used as submodule, default to not building analysis targets
+    if(NOT DEFINED DBGTR_BUILD_ANALYSIS)
+        set(DBGTR_BUILD_ANALYSIS OFF CACHE BOOL "Disable analysis when submodule" FORCE)
+    endif()
+else()
+    set(DBGTR_IS_SUBMODULE FALSE)
+endif()
 
 # If DBGTX::dbgtracing already exists (e.g., provided upstream), skip local definition
 if (TARGET ${DBGTR_TARGET_ALIAS})
@@ -282,64 +294,71 @@ if (DBGTR_BUILD_TESTS)
 endif()
 
 # ----- Custom Targets for Static Analysis & Sanitizers -----
+if(DBGTR_BUILD_ANALYSIS)
+    message(STATUS "DebugTraces: Creating analysis targets")
+    
+    # Clang-Tidy target (run manually)
+    find_program(MANUAL_CLANG_TIDY_EXE NAMES "clang-tidy" PATHS "/opt/homebrew/opt/llvm/bin" NO_DEFAULT_PATH)
+    if (NOT MANUAL_CLANG_TIDY_EXE)
+      find_program(MANUAL_CLANG_TIDY_EXE NAMES "clang-tidy")
+    endif()
 
-# Clang-Tidy target (run manually)
-find_program(MANUAL_CLANG_TIDY_EXE NAMES "clang-tidy" PATHS "/opt/homebrew/opt/llvm/bin" NO_DEFAULT_PATH)
-if (NOT MANUAL_CLANG_TIDY_EXE)
-  find_program(MANUAL_CLANG_TIDY_EXE NAMES "clang-tidy")
+    if (MANUAL_CLANG_TIDY_EXE)
+      add_custom_target(clang-tidy
+        COMMAND ${MANUAL_CLANG_TIDY_EXE}
+          --config-file=${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-tidy
+          -header-filter=.*
+          ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+          ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
+          --
+          -std=c++20
+          -I${CMAKE_CURRENT_SOURCE_DIR}/src
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Running Clang-Tidy static analysis"
+        VERBATIM
+      )
+    endif()
+
+    # ASAN test target
+    add_custom_target(test-asan
+      COMMAND ${CMAKE_COMMAND} -DDBGTR_ASAN=ON -DCMAKE_BUILD_TYPE=Debug -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR}/asan
+      COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/asan
+      COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}/asan --output-on-failure
+      COMMENT "Building and running tests with AddressSanitizer"
+      VERBATIM
+    )
+
+    # TSAN test target
+    add_custom_target(test-tsan
+      COMMAND ${CMAKE_COMMAND} -DDBGTR_TSAN=ON -DCMAKE_BUILD_TYPE=Debug -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR}/tsan
+      COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/tsan
+      COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}/tsan --output-on-failure
+      COMMENT "Building and running tests with ThreadSanitizer"
+      VERBATIM
+    )
+
+    # UBSAN test target
+    add_custom_target(test-ubsan
+      COMMAND ${CMAKE_COMMAND} -DDBGTR_UBSAN=ON -DCMAKE_BUILD_TYPE=Debug -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR}/ubsan
+      COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/ubsan
+      COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}/ubsan --output-on-failure
+      COMMENT "Building and running tests with UndefinedBehaviorSanitizer"
+      VERBATIM
+    )
+
+    # Combined static analysis target
+    add_custom_target(analyze
+      DEPENDS clang-tidy
+      COMMENT "Running all static analysis tools"
+    )
+
+    # All sanitizers target (runs them sequentially)
+    add_custom_target(test-all-sanitizers
+      DEPENDS test-asan test-tsan test-ubsan
+      COMMENT "Running tests with all sanitizers"
+    )
+    
+    message(STATUS "DebugTraces: Analysis targets created (analyze, test-asan, test-tsan, test-ubsan)")
+else()
+    message(STATUS "DebugTraces: Skipping analysis targets (DBGTR_BUILD_ANALYSIS=OFF)")
 endif()
-
-if (MANUAL_CLANG_TIDY_EXE)
-  add_custom_target(clang-tidy
-    COMMAND ${MANUAL_CLANG_TIDY_EXE}
-      --config-file=${CMAKE_CURRENT_SOURCE_DIR}/cmake/.clang-tidy
-      -header-filter=.*
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/*.h
-      --
-      -std=c++20
-      -I${CMAKE_CURRENT_SOURCE_DIR}/src
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Running Clang-Tidy static analysis"
-    VERBATIM
-  )
-endif()
-
-# ASAN test target
-add_custom_target(test-asan
-  COMMAND ${CMAKE_COMMAND} -DDBGTR_ASAN=ON -DCMAKE_BUILD_TYPE=Debug -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR}/asan
-  COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/asan
-  COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}/asan --output-on-failure
-  COMMENT "Building and running tests with AddressSanitizer"
-  VERBATIM
-)
-
-# TSAN test target
-add_custom_target(test-tsan
-  COMMAND ${CMAKE_COMMAND} -DDBGTR_TSAN=ON -DCMAKE_BUILD_TYPE=Debug -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR}/tsan
-  COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/tsan
-  COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}/tsan --output-on-failure
-  COMMENT "Building and running tests with ThreadSanitizer"
-  VERBATIM
-)
-
-# UBSAN test target
-add_custom_target(test-ubsan
-  COMMAND ${CMAKE_COMMAND} -DDBGTR_UBSAN=ON -DCMAKE_BUILD_TYPE=Debug -S ${CMAKE_SOURCE_DIR} -B ${CMAKE_BINARY_DIR}/ubsan
-  COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/ubsan
-  COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR}/ubsan --output-on-failure
-  COMMENT "Building and running tests with UndefinedBehaviorSanitizer"
-  VERBATIM
-)
-
-# Combined static analysis target
-add_custom_target(analyze
-  DEPENDS clang-tidy
-  COMMENT "Running all static analysis tools"
-)
-
-# All sanitizers target (runs them sequentially)
-add_custom_target(test-all-sanitizers
-  DEPENDS test-asan test-tsan test-ubsan
-  COMMENT "Running tests with all sanitizers"
-)
